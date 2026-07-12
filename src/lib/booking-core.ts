@@ -55,7 +55,13 @@ async function findSpaceForBooking(spaceId: string): Promise<SpaceForBooking | n
       reviews: Number(doc.reviews),
       capacity: Number(doc.capacity),
       seatsAvailable: Number(doc.seatsAvailable),
-      image: resolveSpaceImage(String(doc.image)),
+      // Store the raw canonical path (e.g. "/assets/space-1.jpg"), NOT resolveSpaceImage's
+      // output. resolveSpaceImage returns a build-specific bundled asset URL (Vite content
+      // hash), and that string gets copied straight into the Booking document at creation
+      // time. If we resolved it here, the hash would be frozen into the DB forever and break
+      // the moment the app is rebuilt/redeployed. Resolve at read-time instead (toBookingDTO /
+      // getMemberBookings do this), so the image always matches the currently running build.
+      image: String(doc.image),
       amenities: doc.amenities as string[],
       description: String(doc.description),
       host: String(doc.host),
@@ -199,10 +205,32 @@ export async function createBooking(
   return { booking: dto };
 }
 
+/**
+ * Booked spaceImage values can go stale (see the comment in findSpaceForBooking above) —
+ * either from bookings created before this fix, or simply because a space's photo changed
+ * after the booking was made. Re-resolve each booking's image against the space's current
+ * image at read time so the dashboard always shows something that actually exists.
+ */
+async function attachLiveSpaceImages(bookings: BookingDTO[]): Promise<BookingDTO[]> {
+  const spaceIds = [...new Set(bookings.map((b) => b.spaceId))];
+  if (spaceIds.length === 0) return bookings;
+
+  const spaceDocs = await SpaceModel.find({ id: { $in: spaceIds } }).lean();
+  const imageBySpaceId = new Map(
+    spaceDocs.map((s) => [s.id, resolveSpaceImage(String(s.image))]),
+  );
+
+  return bookings.map((b) => {
+    const liveImage = imageBySpaceId.get(b.spaceId);
+    return liveImage ? { ...b, spaceImage: liveImage } : b;
+  });
+}
+
 export async function getMemberBookings(memberId: string): Promise<BookingDTO[]> {
   await connectDB();
   const docs = await BookingModel.find({ memberId }).sort({ createdAt: -1 }).lean();
-  return docs.map((doc) => toBookingDTO(doc as Parameters<typeof toBookingDTO>[0]));
+  const bookings = docs.map((doc) => toBookingDTO(doc as Parameters<typeof toBookingDTO>[0]));
+  return attachLiveSpaceImages(bookings);
 }
 
 export async function getOwnerBookings(ownerId: string): Promise<BookingDTO[]> {
@@ -233,13 +261,15 @@ export async function getOwnerBookings(ownerId: string): Promise<BookingDTO[]> {
     return true;
   });
 
-  return unique.map((doc) => toBookingDTO(doc as Parameters<typeof toBookingDTO>[0]));
+  const bookings = unique.map((doc) => toBookingDTO(doc as Parameters<typeof toBookingDTO>[0]));
+  return attachLiveSpaceImages(bookings);
 }
 
 export async function getAllBookings(): Promise<BookingDTO[]> {
   await connectDB();
   const docs = await BookingModel.find().sort({ createdAt: -1 }).lean();
-  return docs.map((doc) => toBookingDTO(doc as Parameters<typeof toBookingDTO>[0]));
+  const bookings = docs.map((doc) => toBookingDTO(doc as Parameters<typeof toBookingDTO>[0]));
+  return attachLiveSpaceImages(bookings);
 }
 
 export async function acceptBooking(
@@ -490,3 +520,4 @@ export async function fixLegacyBookingOwnership(): Promise<void> {
     }
   }
 }
+gi
