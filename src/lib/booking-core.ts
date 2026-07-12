@@ -520,4 +520,3 @@ export async function fixLegacyBookingOwnership(): Promise<void> {
     }
   }
 }
-gi
