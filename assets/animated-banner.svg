@@ -1,0 +1,46 @@
+<svg width="1400" height="360" viewBox="0 0 1400 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Aperture Coworking Hub animated banner">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#111827" />
+      <stop offset="100%" stop-color="#312e81" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#7dd3fc" />
+      <stop offset="50%" stop-color="#f472b6" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="360" rx="28" fill="url(#bg)" />
+  <rect x="34" y="34" width="1332" height="292" rx="24" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.15)" />
+
+  <circle cx="220" cy="120" r="110" fill="rgba(125,211,252,0.13)" filter="url(#glow)">
+    <animate attributeName="r" values="90;120;90" dur="4s" repeatCount="indefinite" />
+  </circle>
+  <circle cx="1180" cy="230" r="90" fill="rgba(244,114,182,0.16)" filter="url(#glow)">
+    <animate attributeName="r" values="70;100;70" dur="4.5s" repeatCount="indefinite" />
+  </circle>
+
+  <path d="M170 240 C280 170, 340 170, 430 240" stroke="url(#accent)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.85">
+    <animate attributeName="stroke-dasharray" values="0,1000;1000,0;0,1000" dur="3s" repeatCount="indefinite" />
+  </path>
+  <path d="M900 110 C1000 80, 1080 110, 1160 180" stroke="rgba(255,255,255,0.4)" stroke-width="2" fill="none" stroke-linecap="round" />
+
+  <text x="90" y="138" fill="#f8fafc" font-family="Segoe UI, Arial, sans-serif" font-size="28" letter-spacing="4">APERTURE</text>
+  <text x="90" y="188" fill="url(#accent)" font-family="Segoe UI, Arial, sans-serif" font-size="58" font-weight="700">Coworking Hub</text>
+  <text x="90" y="232" fill="#cbd5e1" font-family="Segoe UI, Arial, sans-serif" font-size="24">Discover • Book • Grow</text>
+
+  <rect x="90" y="260" width="240" height="38" rx="999" fill="rgba(255,255,255,0.09)" stroke="rgba(255,255,255,0.24)" />
+  <rect x="96" y="266" width="120" height="26" rx="999" fill="url(#accent)" opacity="0.95">
+    <animate attributeName="width" values="120;200;120" dur="2.8s" repeatCount="indefinite" />
+  </rect>
+  <text x="112" y="283" fill="#020617" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="700">Live booking flow</text>
+</svg>
