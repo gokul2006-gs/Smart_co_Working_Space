@@ -1,8 +1,10 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI =
-  process.env.MONGODB_URI ??
-  "mongodb://gokulsat73_db_user:VrfWSVg1eBJxLbmX@ac-mgkrcht-shard-00-00.hphv6pl.mongodb.net:27017,ac-mgkrcht-shard-00-01.hphv6pl.mongodb.net:27017,ac-mgkrcht-shard-00-02.hphv6pl.mongodb.net:27017/aperture?ssl=true&authSource=admin&retryWrites=true&w=majority";
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  throw new Error("MONGODB_URI is not defined. Add it to your .env file.");
+}
 
 interface MongooseCache {
   conn: typeof mongoose | null;
