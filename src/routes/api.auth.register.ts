@@ -14,7 +14,8 @@ export const Route = createFileRoute("/api/auth/register")({
           return authSuccessResponse(result);
         } catch (err) {
           console.error("Register API error:", err);
-          return Response.json({ error: "Invalid registration request" }, { status: 400 });
+          const message = err instanceof Error ? err.message : "Invalid registration request";
+          return Response.json({ error: message }, { status: 400 });
         }
       },
     },

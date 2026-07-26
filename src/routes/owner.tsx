@@ -27,12 +27,21 @@ export const Route = createFileRoute("/owner")({
     }
   },
   loader: async ({ context }) => {
-    const bookings = await fetchOwnerBookings();
-    return {
-      bookings,
-      gatewayEnabled: isPaymentGatewayEnabled(),
-      paymentProvider: getPaymentProvider(),
-    };
+    try {
+      const bookings = await fetchOwnerBookings();
+      return {
+        bookings,
+        gatewayEnabled: isPaymentGatewayEnabled(),
+        paymentProvider: getPaymentProvider(),
+      };
+    } catch (err) {
+      console.error("Owner bookings load failed:", err);
+      return {
+        bookings: [],
+        gatewayEnabled: isPaymentGatewayEnabled(),
+        paymentProvider: getPaymentProvider(),
+      };
+    }
   },
   head: () => ({
     meta: [

@@ -61,7 +61,14 @@ export async function sendEmail(payload: EmailPayload): Promise<{ ok: boolean; d
 
 /** Fire-and-forget — never blocks the booking flow */
 export function sendEmailSafe(payload: EmailPayload): void {
-  void sendEmail(payload);
+  void sendEmail(payload).then((result) => {
+    if (!result.ok && !result.dev) {
+      console.error("[email] Failed to deliver email:", {
+        to: Array.isArray(payload.to) ? payload.to.join(", ") : payload.to,
+        subject: payload.subject,
+      });
+    }
+  });
 }
 
 export function notifyOwnerNewBooking(booking: BookingDTO, ownerEmails: string[]): void {

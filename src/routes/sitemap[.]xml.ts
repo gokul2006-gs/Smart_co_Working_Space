@@ -1,8 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type {} from "@tanstack/react-start";
 import { getSpaces } from "@/lib/spaces-data";
-
-const BASE_URL = "";
+import { getAppUrl } from "@/lib/payment";
 
 interface SitemapEntry {
   path: string;
@@ -14,6 +13,7 @@ export const Route = createFileRoute("/sitemap.xml")({
   server: {
     handlers: {
       GET: async () => {
+        const BASE_URL = getAppUrl().replace(/\/$/, "");
         const spaces = await getSpaces();
         const entries: SitemapEntry[] = [
           { path: "/", changefreq: "weekly", priority: "1.0" },

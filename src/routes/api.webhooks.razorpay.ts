@@ -14,7 +14,13 @@ export const Route = createFileRoute("/api/webhooks/razorpay")({
           return Response.json({ error: "Invalid signature" }, { status: 400 });
         }
 
-        const payload = JSON.parse(rawBody) as Parameters<typeof handleRazorpayWebhook>[0];
+        let payload: Parameters<typeof handleRazorpayWebhook>[0];
+        try {
+          payload = JSON.parse(rawBody) as Parameters<typeof handleRazorpayWebhook>[0];
+        } catch {
+          return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
+        }
+
         await handleRazorpayWebhook(payload);
         return Response.json({ received: true });
       },

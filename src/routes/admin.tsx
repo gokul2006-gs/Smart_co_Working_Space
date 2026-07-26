@@ -21,7 +21,10 @@ export const Route = createFileRoute("/admin")({
     if (!context.user) throw redirect({ to: "/login" });
     if (context.user.role !== "admin") throw redirect({ to: "/dashboard" });
   },
-  loader: () => fetchAdminData(),
+  loader: () => fetchAdminData().catch((err) => {
+    console.error("Admin data load failed:", err);
+    return { bookings: [], users: [], stats: { userCount: 0, spaceCount: 0, total: 0, pending: 0, awaitingPayment: 0, confirmed: 0, rejected: 0 } };
+  }),
   head: () => ({
     meta: [
       { title: "Admin Panel — Aperture" },

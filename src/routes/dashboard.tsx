@@ -22,11 +22,21 @@ export const Route = createFileRoute("/dashboard")({
   },
   loader: async ({ context }) => {
     if (context.user?.role === "admin") {
-      return await fetchAdminData();
+      try {
+        return await fetchAdminData();
+      } catch (err) {
+        console.error("Admin data load failed:", err);
+        return { bookings: [], users: [], stats: { userCount: 0, spaceCount: 0, total: 0, pending: 0, awaitingPayment: 0, confirmed: 0, rejected: 0 } };
+      }
     }
 
-    const bookings = await fetchMemberBookings();
-    return { bookings };
+    try {
+      const bookings = await fetchMemberBookings();
+      return { bookings };
+    } catch (err) {
+      console.error("Member bookings load failed:", err);
+      return { bookings: [] };
+    }
   },
   head: () => ({ meta: [{ title: "Dashboard — Aperture" }] }),
   component: DashboardPage,
@@ -81,26 +91,57 @@ function DashboardPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get("payment");
-    if (!payment) return;
+    const bookingId = params.get("booking");
 
-    if (payment === "success") {
-      toast.success("Payment received — your booking is confirmed!");
-    } else if (payment === "cancelled") {
-      toast.info("Payment cancelled. You can try again anytime from your dashboard.");
-    }
-
-    // Refresh bookings so the confirmed status reflects immediately.
-    fetch("/api/bookings")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.bookings) setBookings(data.bookings);
-      })
-      .catch(() => {});
-
+    // Clean the URL immediately regardless of outcome
     params.delete("payment");
     params.delete("booking");
     const query = params.toString();
     window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+
+    if (!payment) return;
+
+    if (payment === "success" && bookingId) {
+      // Confirm server-side first (fallback if webhook hasn't fired yet)
+      fetch(`/api/payments/confirm/${bookingId}`, { method: "POST" })
+        .then((r) => r.json())
+        .then((data: { booking?: BookingDTO }) => {
+          if (data.booking) {
+            setBookings((prev) =>
+              prev.map((b) => (b.bookingId === data.booking!.bookingId ? data.booking! : b)),
+            );
+          }
+          toast.success("Payment received — your booking is confirmed!");
+        })
+        .catch(() => {
+          toast.success("Payment received — your booking is confirmed!");
+        });
+
+      // Poll /api/bookings a few times to catch any async webhook update
+      let attempts = 0;
+      const poll = setInterval(() => {
+        attempts++;
+        fetch("/api/bookings")
+          .then((r) => r.json())
+          .then((data: { bookings?: BookingDTO[] }) => {
+            if (data.bookings) setBookings(data.bookings);
+          })
+          .catch(() => {})
+          .finally(() => {
+            if (attempts >= 4) clearInterval(poll);
+          });
+      }, 1500);
+
+    } else if (payment === "cancelled") {
+      toast.info("Payment cancelled. You can try again from your dashboard.");
+      // Refresh to get latest state
+      fetch("/api/bookings")
+        .then((r) => r.json())
+        .then((data: { bookings?: BookingDTO[] }) => {
+          if (data.bookings) setBookings(data.bookings);
+        })
+        .catch(() => {});
+    }
   }, []);
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);

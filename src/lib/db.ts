@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI =
+  process.env.MONGODB_URI ??
+  "mongodb://gokulsat73_db_user:VrfWSVg1eBJxLbmX@ac-mgkrcht-shard-00-00.hphv6pl.mongodb.net:27017,ac-mgkrcht-shard-00-01.hphv6pl.mongodb.net:27017,ac-mgkrcht-shard-00-02.hphv6pl.mongodb.net:27017/aperture?ssl=true&authSource=admin&retryWrites=true&w=majority";
 
 interface MongooseCache {
   conn: typeof mongoose | null;
@@ -16,19 +18,16 @@ const cached: MongooseCache = global.__mongoose ?? { conn: null, promise: null }
 global.__mongoose = cached;
 
 export async function connectDB(): Promise<typeof mongoose> {
-  if (!MONGODB_URI) {
-    throw new Error("MONGODB_URI is not defined. Add it to your .env file.");
-  }
-
   if (cached.conn) {
     return cached.conn;
   }
 
   if (!cached.promise) {
     cached.promise = mongoose.connect(MONGODB_URI, {
+      dbName: "aperture",
       bufferCommands: false,
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
     });
   }
 

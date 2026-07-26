@@ -14,7 +14,13 @@ export const Route = createFileRoute("/api/webhooks/paystack")({
           return Response.json({ error: "Invalid signature" }, { status: 400 });
         }
 
-        const payload = JSON.parse(rawBody);
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse(rawBody) as Record<string, unknown>;
+        } catch {
+          return Response.json({ error: "Invalid JSON payload" }, { status: 400 });
+        }
+
         await handlePaystackWebhook(payload);
         return Response.json({ received: true });
       },

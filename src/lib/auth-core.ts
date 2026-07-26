@@ -146,7 +146,14 @@ export async function loginUser(data: z.infer<typeof loginSchema>): Promise<Auth
 
 export function authSuccessResponse(result: AuthResult): Response {
   if (result.error || !result.user || !result.token) {
-    return Response.json({ error: result.error ?? "Authentication failed" }, { status: 400 });
+    // 401 for credential errors, 400 for everything else
+    const isCredentialError =
+      result.error === "Invalid email or password" ||
+      result.error === "Authentication failed";
+    return Response.json(
+      { error: result.error ?? "Authentication failed" },
+      { status: isCredentialError ? 401 : 400 },
+    );
   }
 
   return Response.json(

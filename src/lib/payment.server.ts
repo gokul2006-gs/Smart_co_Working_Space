@@ -99,18 +99,26 @@ export async function markBookingPaid(
   const { connectDB, BookingModel, toBookingDTO, SpaceModel } = await getBookingDeps();
   await connectDB();
 
-  const booking = await BookingModel.findOne({ bookingId });
-  if (!booking) return null;
+  // Atomic find-and-update: only transition from awaiting_payment → confirmed.
+  // This prevents duplicate webhook calls from double-deducting seats.
+  const booking = await BookingModel.findOneAndUpdate(
+    { bookingId, paymentStatus: { $ne: "paid" } },
+    {
+      $set: {
+        status: "confirmed",
+        paymentStatus: "paid",
+        paymentId,
+        confirmedAt: new Date(),
+      },
+    },
+    { returnDocument: "after" },
+  );
 
-  if (booking.paymentStatus === "paid") {
-    return toBookingDTO(booking.toObject());
+  if (!booking) {
+    // Either not found or already paid — return current state if it exists
+    const existing = await BookingModel.findOne({ bookingId });
+    return existing ? toBookingDTO(existing.toObject()) : null;
   }
-
-  booking.status = "confirmed";
-  booking.paymentStatus = "paid";
-  booking.paymentId = paymentId;
-  booking.confirmedAt = booking.confirmedAt ?? new Date();
-  await booking.save();
 
   // Commit the seats now that payment has actually gone through.
   await SpaceModel.updateOne(
@@ -124,6 +132,7 @@ export async function markBookingPaid(
         },
       },
     ],
+    { updatePipeline: true },
   );
 
   return toBookingDTO(booking.toObject());
@@ -214,13 +223,14 @@ export async function verifyPaystackWebhookSignature(
   return expected === signature;
 }
 
-export async function handlePaystackWebhook(payload: any): Promise<{ ok: boolean }> {
-  const event = payload.event || payload.eventType;
+export async function handlePaystackWebhook(payload: Record<string, unknown>): Promise<{ ok: boolean }> {
+  const data = payload.data as Record<string, unknown> | undefined;
+  const event = (payload.event ?? payload.eventType) as string | undefined;
 
   if (event === "charge.success") {
-    const data = payload.data;
-    const bookingId = data?.metadata?.bookingId || data?.metadata?.booking || null;
-    const reference = data?.reference || data?.id;
+    const meta = (data?.metadata ?? {}) as Record<string, unknown>;
+    const bookingId = (meta.bookingId ?? meta.booking ?? null) as string | null;
+    const reference = (data?.reference ?? data?.id) as string | undefined;
     if (bookingId && reference) {
       await markBookingPaid(bookingId, reference);
     }
@@ -243,9 +253,10 @@ export async function verifyPayuWebhookSignature(
   return expected === signature;
 }
 
-export async function handlePayuWebhook(payload: any): Promise<{ ok: boolean }> {
-  const bookingId = payload?.metadata?.bookingId || payload?.data?.metadata?.bookingId || payload?.bookingId;
-  const paymentId = payload?.payment_id || payload?.data?.payment_id || payload?.id || `payu_${Date.now()}`;
+export async function handlePayuWebhook(payload: Record<string, unknown>): Promise<{ ok: boolean }> {
+  const meta = (payload.metadata ?? (payload.data as Record<string, unknown> | undefined)?.metadata ?? {}) as Record<string, unknown>;
+  const bookingId = (meta.bookingId ?? payload.bookingId) as string | undefined;
+  const paymentId = (payload.payment_id ?? (payload.data as Record<string, unknown> | undefined)?.payment_id ?? payload.id ?? `payu_${Date.now()}`) as string;
 
   if (bookingId) {
     await markBookingPaid(bookingId, paymentId);

@@ -30,6 +30,7 @@ import { Route as ApiAuthRegisterRouteImport } from './routes/api.auth.register'
 import { Route as ApiAuthLogoutRouteImport } from './routes/api.auth.logout'
 import { Route as ApiAuthLoginRouteImport } from './routes/api.auth.login'
 import { Route as ApiAdminUsersRouteImport } from './routes/api.admin.users'
+import { Route as ApiPaymentsConfirmBookingIdRouteImport } from './routes/api.payments.confirm.$bookingId'
 import { Route as ApiPaymentsCheckoutBookingIdRouteImport } from './routes/api.payments.checkout.$bookingId'
 import { Route as ApiBookingsIdRejectRouteImport } from './routes/api.bookings.$id.reject'
 import { Route as ApiBookingsIdCompleteRouteImport } from './routes/api.bookings.$id.complete'
@@ -141,6 +142,12 @@ const ApiAdminUsersRoute = ApiAdminUsersRouteImport.update({
   path: '/api/admin/users',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPaymentsConfirmBookingIdRoute =
+  ApiPaymentsConfirmBookingIdRouteImport.update({
+    id: '/api/payments/confirm/$bookingId',
+    path: '/api/payments/confirm/$bookingId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPaymentsCheckoutBookingIdRoute =
   ApiPaymentsCheckoutBookingIdRouteImport.update({
     id: '/api/payments/checkout/$bookingId',
@@ -195,6 +202,7 @@ export interface FileRoutesByFullPath {
   '/api/bookings/$id/complete': typeof ApiBookingsIdCompleteRoute
   '/api/bookings/$id/reject': typeof ApiBookingsIdRejectRoute
   '/api/payments/checkout/$bookingId': typeof ApiPaymentsCheckoutBookingIdRoute
+  '/api/payments/confirm/$bookingId': typeof ApiPaymentsConfirmBookingIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -223,6 +231,7 @@ export interface FileRoutesByTo {
   '/api/bookings/$id/complete': typeof ApiBookingsIdCompleteRoute
   '/api/bookings/$id/reject': typeof ApiBookingsIdRejectRoute
   '/api/payments/checkout/$bookingId': typeof ApiPaymentsCheckoutBookingIdRoute
+  '/api/payments/confirm/$bookingId': typeof ApiPaymentsConfirmBookingIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -252,6 +261,7 @@ export interface FileRoutesById {
   '/api/bookings/$id/complete': typeof ApiBookingsIdCompleteRoute
   '/api/bookings/$id/reject': typeof ApiBookingsIdRejectRoute
   '/api/payments/checkout/$bookingId': typeof ApiPaymentsCheckoutBookingIdRoute
+  '/api/payments/confirm/$bookingId': typeof ApiPaymentsConfirmBookingIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -282,6 +292,7 @@ export interface FileRouteTypes {
     | '/api/bookings/$id/complete'
     | '/api/bookings/$id/reject'
     | '/api/payments/checkout/$bookingId'
+    | '/api/payments/confirm/$bookingId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -310,6 +321,7 @@ export interface FileRouteTypes {
     | '/api/bookings/$id/complete'
     | '/api/bookings/$id/reject'
     | '/api/payments/checkout/$bookingId'
+    | '/api/payments/confirm/$bookingId'
   id:
     | '__root__'
     | '/'
@@ -338,6 +350,7 @@ export interface FileRouteTypes {
     | '/api/bookings/$id/complete'
     | '/api/bookings/$id/reject'
     | '/api/payments/checkout/$bookingId'
+    | '/api/payments/confirm/$bookingId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -363,6 +376,7 @@ export interface RootRouteChildren {
   ApiWebhooksRazorpayRoute: typeof ApiWebhooksRazorpayRoute
   ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
   ApiPaymentsCheckoutBookingIdRoute: typeof ApiPaymentsCheckoutBookingIdRoute
+  ApiPaymentsConfirmBookingIdRoute: typeof ApiPaymentsConfirmBookingIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -514,6 +528,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/payments/confirm/$bookingId': {
+      id: '/api/payments/confirm/$bookingId'
+      path: '/api/payments/confirm/$bookingId'
+      fullPath: '/api/payments/confirm/$bookingId'
+      preLoaderRoute: typeof ApiPaymentsConfirmBookingIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/payments/checkout/$bookingId': {
       id: '/api/payments/checkout/$bookingId'
       path: '/api/payments/checkout/$bookingId'
@@ -593,6 +614,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWebhooksRazorpayRoute: ApiWebhooksRazorpayRoute,
   ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
   ApiPaymentsCheckoutBookingIdRoute: ApiPaymentsCheckoutBookingIdRoute,
+  ApiPaymentsConfirmBookingIdRoute: ApiPaymentsConfirmBookingIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

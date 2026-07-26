@@ -128,6 +128,7 @@ async function adjustSeatsAvailable(spaceId: string, delta: number): Promise<voi
         },
       },
     ],
+    { updatePipeline: true },
   );
 }
 

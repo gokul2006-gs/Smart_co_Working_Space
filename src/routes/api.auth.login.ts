@@ -14,7 +14,9 @@ export const Route = createFileRoute("/api/auth/login")({
           return authSuccessResponse(result);
         } catch (err) {
           console.error("Login API error:", err);
-          return Response.json({ error: "Invalid login request" }, { status: 400 });
+          // Return the actual error message so the UI can display it
+          const message = err instanceof Error ? err.message : "Invalid login request";
+          return Response.json({ error: message }, { status: 400 });
         }
       },
     },
