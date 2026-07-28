@@ -14,7 +14,10 @@ interface FormData {
 
 export const Route = createFileRoute("/login")({
   beforeLoad: ({ context }) => {
-    if (context.user) throw redirect({ to: "/dashboard" });
+    if (!context.user) return;
+    const role = context.user.role;
+    if (role === "space_owner" || role === "admin") throw redirect({ to: "/owner" });
+    throw redirect({ to: "/dashboard" });
   },
   component: LoginPage,
 });
@@ -54,7 +57,9 @@ function LoginPage() {
       }
 
       toast.success("Welcome back!");
-      window.location.href = "/dashboard";
+      const role = (result.user as { role?: string })?.role;
+      window.location.href =
+        role === "space_owner" || role === "admin" ? "/owner" : "/dashboard";
     } catch {
       toast.error("Sign in failed. Please try again.");
     } finally {
