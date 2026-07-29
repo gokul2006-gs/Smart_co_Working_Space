@@ -1,10 +1,12 @@
 import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Building2, ArrowRight, MapPin, CreditCard, Plus } from "lucide-react";
+import { Building2, ArrowRight, MapPin, CreditCard, Plus, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { fetchMemberBookings, fetchAdminData } from "@/lib/bookings-data";
 import {
   bookingStatusLabels,
@@ -67,6 +69,8 @@ function DashboardPage() {
   }, []);
 
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [manualPayRef, setManualPayRef] = useState<Record<string, string>>({});
+  const [submittingManualId, setSubmittingManualId] = useState<string | null>(null);
 
   const handlePayNow = async (bookingId: string) => {
     setPayingId(bookingId);
@@ -146,6 +150,32 @@ function DashboardPage() {
 
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
+  const handleManualPayConfirm = async (bookingId: string) => {
+    const ref = manualPayRef[bookingId]?.trim();
+    if (!ref) {
+      toast.error("Please enter your payment reference.");
+      return;
+    }
+    setSubmittingManualId(bookingId);
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}/pay`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentReference: ref }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { booking?: BookingDTO; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? "Failed to submit");
+      if (data.booking) {
+        setBookings((prev) => prev.map((b) => (b.bookingId === data.booking!.bookingId ? data.booking! : b)));
+      }
+      toast.success("Payment submitted — the owner has been notified.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to submit payment");
+    } finally {
+      setSubmittingManualId(null);
+    }
+  };
+
   const handleCancel = async (bookingId: string) => {
     if (!window.confirm("Cancel this booking? This can't be undone.")) return;
     setCancellingId(bookingId);
@@ -183,7 +213,7 @@ function DashboardPage() {
           {[
             { icon: Building2, label: "Your listings", value: mySpaces.length },
             { icon: MapPin, label: "Bookings", value: bookings.length },
-            { icon: CreditCard, label: "Payments", value: "—" },
+            { icon: CreditCard, label: "Confirmed & paid", value: bookings.filter((b) => b.paymentStatus === "paid").length },
           ].map((s) => (
             <div key={s.label} className="rounded-lg border border-border bg-card p-6 shadow-soft">
               <span className="flex h-10 w-10 items-center justify-center rounded-md bg-accent/10 text-accent">
@@ -238,7 +268,7 @@ function DashboardPage() {
                         </div>
                       </div>
 
-                      {b.status === "awaiting_payment" && (
+                      {b.status === "awaiting_payment" && b.paymentProvider !== "manual" && (
                         <div className="mt-4 rounded-md border border-blue-500/20 bg-blue-500/5 p-3 text-sm">
                           <p className="flex items-center gap-1.5 font-semibold text-blue-700 dark:text-blue-400"><CreditCard className="h-4 w-4" /> Payment required</p>
                           <p className="mt-2 text-muted-foreground">Your booking was approved. Pay ${b.totalAmount} to confirm your reservation.</p>
@@ -254,9 +284,56 @@ function DashboardPage() {
                         </div>
                       )}
 
-                      {b.status === "confirmed" && (
+                      {b.status === "confirmed" && b.paymentProvider === "manual" && b.paymentStatus !== "paid" && (
+                        <div className="mt-4 rounded-md border border-amber-500/20 bg-amber-500/5 p-4 text-sm space-y-3">
+                          <p className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-400">
+                            <CreditCard className="h-4 w-4" /> Manual payment required
+                          </p>
+                          {b.paymentMethod && (
+                            <p className="text-muted-foreground">Method: <span className="font-medium text-foreground">{b.paymentMethod}</span></p>
+                          )}
+                          {b.paymentInstructions && (
+                            <p className="whitespace-pre-line rounded-md bg-background/60 p-3 border border-border text-foreground">{b.paymentInstructions}</p>
+                          )}
+                          {b.paymentReference && (
+                            <p className="text-muted-foreground">Reference: <span className="font-mono font-medium text-foreground">{b.paymentReference}</span></p>
+                          )}
+                          <div className="flex gap-2 items-end">
+                            <div className="flex-1">
+                              <Label htmlFor={`ref-${b.bookingId}`} className="text-xs mb-1 block">Your payment reference / UTR</Label>
+                              <Input
+                                id={`ref-${b.bookingId}`}
+                                placeholder="e.g. UTR number, transaction ID"
+                                value={manualPayRef[b.bookingId] ?? ""}
+                                onChange={(e) => setManualPayRef((prev) => ({ ...prev, [b.bookingId]: e.target.value }))}
+                              />
+                            </div>
+                            <Button
+                              variant="accent"
+                              size="sm"
+                              disabled={submittingManualId === b.bookingId}
+                              onClick={() => handleManualPayConfirm(b.bookingId)}
+                            >
+                              {submittingManualId === b.bookingId ? "Submitting…" : "Confirm payment"}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+
+                      {b.status === "confirmed" && b.paymentStatus === "paid" && (
+                        <div className="mt-4 rounded-md border border-green-500/20 bg-green-500/5 p-3 text-sm">
+                          <p className="flex items-center gap-1.5 font-semibold text-green-700 dark:text-green-400">
+                            <CheckCircle2 className="h-4 w-4" /> Payment confirmed
+                          </p>
+                          <p className="mt-1 text-muted-foreground">{timing.label}: {timing.detail}</p>
+                          <p className="mt-0.5 text-muted-foreground">Exit by {formatBookingTime(timing.exitTime)}</p>
+                          {b.ownerNotes && <p className="mt-1 text-muted-foreground">{b.ownerNotes}</p>}
+                        </div>
+                      )}
+
+                      {b.status === "confirmed" && b.paymentStatus !== "paid" && b.paymentProvider !== "manual" && (
                         <div className="mt-4 rounded-md border border-accent/20 bg-accent/5 p-3 text-sm">
-                          <p className="flex items-center gap-1.5 font-semibold text-accent"><CreditCard className="h-4 w-4" /> Booking time monitor</p>
+                          <p className="flex items-center gap-1.5 font-semibold text-accent"><CreditCard className="h-4 w-4" /> Booking confirmed</p>
                           <p className="mt-2 text-muted-foreground">{timing.label}: {timing.detail}</p>
                           <p className="mt-1 text-muted-foreground">Exit by {formatBookingTime(timing.exitTime)}</p>
                           {b.ownerNotes && <p className="mt-1 text-muted-foreground">{b.ownerNotes}</p>}
@@ -264,7 +341,8 @@ function DashboardPage() {
                       )}
 
                       {["pending", "awaiting_payment", "confirmed"].includes(b.status) &&
-                        timing.status !== "completed" && (
+                        timing.status !== "completed" &&
+                        b.paymentStatus !== "paid" && (
                           <div className="mt-3 flex justify-end">
                             <Button
                               variant="outline"

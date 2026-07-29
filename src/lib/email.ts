@@ -177,3 +177,51 @@ export function notifyMemberBookingConfirmed(
     `,
   });
 }
+
+export async function notifyPaymentReceived(
+  booking: BookingDTO,
+  adminEmails: string[],
+): Promise<void> {
+  const appUrl = getAppUrl();
+  const date = new Date(`${booking.date}T12:00:00`).toLocaleDateString();
+
+  const recipients = [booking.ownerEmail, ...adminEmails].filter(Boolean) as string[];
+  if (recipients.length === 0) return;
+
+  const subject = `Payment received — ${booking.spaceName} (${booking.memberName})`;
+
+  const text = [
+    `Hi,`,
+    ``,
+    `Payment has been received for the following booking:`,
+    ``,
+    `Member:  ${booking.memberName} (${booking.memberEmail})`,
+    `Space:   ${booking.spaceName}, ${booking.spaceCity}`,
+    `Date:    ${date}`,
+    `Seats:   ${booking.seats}`,
+    `Amount:  $${booking.totalAmount}`,
+    `Payment: ${booking.paymentMethod ?? "—"}`,
+    booking.paymentId ? `Ref:     ${booking.paymentId}` : "",
+    ``,
+    `View in portal: ${appUrl}/owner`,
+  ]
+    .filter((l) => l !== undefined)
+    .join("\n");
+
+  const html = `
+    <p>Hi,</p>
+    <p>Payment has been received for the following booking:</p>
+    <table style="border-collapse:collapse;font-size:14px;">
+      <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Member</td><td><strong>${booking.memberName}</strong> (${booking.memberEmail})</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Space</td><td>${booking.spaceName}, ${booking.spaceCity}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Date</td><td>${date}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Seats</td><td>${booking.seats}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Amount</td><td><strong>$${booking.totalAmount}</strong></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Method</td><td>${booking.paymentMethod ?? "—"}</td></tr>
+      ${booking.paymentId ? `<tr><td style="padding:4px 12px 4px 0;color:#6b7280;">Ref</td><td>${booking.paymentId}</td></tr>` : ""}
+    </table>
+    <p><a href="${appUrl}/owner">View in Owner Portal →</a></p>
+  `;
+
+  sendEmailSafe({ to: recipients, subject, text, html });
+}

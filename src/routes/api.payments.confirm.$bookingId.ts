@@ -5,6 +5,8 @@ import { getSessionFromCookieHeader } from "@/lib/auth-core";
 import { connectDB } from "@/lib/db";
 import { BookingModel, toBookingDTO } from "@/models/Booking";
 import { SpaceModel } from "@/models/Space";
+import { UserModel } from "@/models/User";
+import { notifyPaymentReceived } from "@/lib/email";
 
 export const Route = createFileRoute("/api/payments/confirm/$bookingId")({
   server: {
@@ -63,7 +65,12 @@ export const Route = createFileRoute("/api/payments/confirm/$bookingId")({
               ],
               { updatePipeline: true },
             );
-            return Response.json({ booking: toBookingDTO(updated.toObject()) });
+            const dto = toBookingDTO(updated.toObject());
+            // Notify owner + admins
+            const admins = await UserModel.find({ role: "admin" }).lean();
+            const adminEmails = admins.map((a) => a.email);
+            notifyPaymentReceived(dto, adminEmails);
+            return Response.json({ booking: dto });
           }
 
           // Another process already confirmed it

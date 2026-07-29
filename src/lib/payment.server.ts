@@ -138,7 +138,16 @@ export async function markBookingPaid(
     { updatePipeline: true },
   );
 
-  return toBookingDTO(booking.toObject());
+  const dto = toBookingDTO(booking.toObject());
+
+  // Notify owner + admins that payment was received
+  const { UserModel } = await import("@/models/User");
+  const admins = await UserModel.find({ role: "admin" }).lean();
+  const adminEmails = admins.map((a) => a.email);
+  const { notifyPaymentReceived } = await import("@/lib/email");
+  notifyPaymentReceived(dto, adminEmails);
+
+  return dto;
 }
 
 export async function handleStripeWebhook(
