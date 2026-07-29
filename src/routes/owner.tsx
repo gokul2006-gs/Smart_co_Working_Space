@@ -1,17 +1,15 @@
 import { createFileRoute, redirect, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Building2, Plus, CalendarClock, Star, Check, X } from "lucide-react";
+import { Building2, CalendarClock, CheckCircle2, Check, X, Bell, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
 import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { fetchOwnerBookings } from "@/lib/bookings-data";
-import { getPaymentProvider, isPaymentGatewayEnabled } from "@/lib/payment";
+import { isPaymentGatewayEnabled, getPaymentProvider } from "@/lib/payment";
 import { getSpaces } from "@/lib/spaces-data";
-import type { Space } from "@/lib/spaces";
 import {
   bookingStatusLabels,
   bookingStatusStyles,
@@ -19,133 +17,112 @@ import {
   formatBookingTimeRange,
 } from "@/lib/booking-utils";
 import type { BookingDTO } from "@/models/Booking";
-import type { SpacePaymentMethod } from "@/models/Space";
+import type { Space } from "@/lib/spaces";
 
 export const Route = createFileRoute("/owner")({
   beforeLoad: ({ context }) => {
     if (!context.user) throw redirect({ to: "/login" });
-    if (context.user.role !== "space_owner" && context.user.role !== "admin") {
-      throw redirect({ to: "/dashboard" });
-    }
+    if (context.user.role !== "space_owner") throw redirect({ to: "/dashboard" });
   },
   loader: async ({ context }) => {
     try {
-      const [bookings, allSpaces] = await Promise.all([
-        fetchOwnerBookings(),
-        getSpaces(),
-      ]);
-      // Filter to spaces owned by this user (or all if admin)
-      const ownerSpaces =
-        context.user?.role === "admin"
-          ? allSpaces
-          : allSpaces.filter((s) => s.ownerId === context.user?.userId);
+      const [bookings, allSpaces] = await Promise.all([fetchOwnerBookings(), getSpaces()]);
+      const ownerSpaces = allSpaces.filter((s) => s.ownerId === context.user?.userId);
       return {
         bookings,
         ownerSpaces,
         gatewayEnabled: isPaymentGatewayEnabled(),
         paymentProvider: getPaymentProvider(),
       };
-    } catch (err) {
-      console.error("Owner bookings load failed:", err);
-      return {
-        bookings: [],
-        ownerSpaces: [],
-        gatewayEnabled: isPaymentGatewayEnabled(),
-        paymentProvider: getPaymentProvider(),
-      };
+    } catch {
+      return { bookings: [], ownerSpaces: [], gatewayEnabled: isPaymentGatewayEnabled(), paymentProvider: getPaymentProvider() };
     }
   },
-  head: () => ({
-    meta: [
-      { title: "Owner Portal — Aperture" },
-      { name: "robots", content: "noindex" },
-    ],
-  }),
-  component: OwnerPage,
+  head: () => ({ meta: [{ title: "Owner Portal — Aperture" }, { name: "robots", content: "noindex" }] }),
+  component: OwnerPortal,
 });
 
-function OwnerPage() {
+function OwnerPortal() {
   const { user } = Route.useRouteContext();
-  const { bookings: initialBookings, ownerSpaces, gatewayEnabled, paymentProvider } = Route.useLoaderData();
-  const [bookings, setBookings] = useState(initialBookings);
-  const [mySpaces, setMySpaces] = useState<Space[]>(ownerSpaces);
+  const { bookings: initial, ownerSpaces, gatewayEnabled, paymentProvider } = Route.useLoaderData();
+  const [bookings, setBookings] = useState<BookingDTO[]>(initial);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState("Bank transfer");
-  const [paymentInstructions, setPaymentInstructions] = useState("");
-  const [paymentReference, setPaymentReference] = useState("");
   const [ownerNotes, setOwnerNotes] = useState("");
   const [processing, setProcessing] = useState(false);
-  // Per-space payment config state: spaceId → { method, instructions }
-  const [spacePaymentEditing, setSpacePaymentEditing] = useState<string | null>(null);
-  const [spacePaymentMethod, setSpacePaymentMethod] = useState<SpacePaymentMethod>("global");
-  const [spacePaymentInstructions, setSpacePaymentInstructions] = useState("");
+  const [completingId, setCompletingId] = useState<string | null>(null);
+  // For new payment notifications
+  const [newPayments, setNewPayments] = useState<BookingDTO[]>([]);
+  const [prevConfirmed, setPrevConfirmed] = useState<Set<string>>(new Set());
 
-  // Refresh bookings from API (handles legacy ownership fixes)
+  // Poll for updates every 15s — owner sees payment confirmation in real time
   useEffect(() => {
-    fetch("/api/bookings")
-      .then((r) => r.json())
-      .then((data: { bookings?: BookingDTO[] }) => {
-        if (data.bookings) setBookings(data.bookings);
-      })
-      .catch(() => {});
+    const refresh = () => {
+      fetch("/api/bookings")
+        .then((r) => r.json())
+        .then((d: { bookings?: BookingDTO[] }) => {
+          if (!Array.isArray(d.bookings)) return;
+          setBookings((prev) => {
+            // Detect newly paid bookings since last poll
+            const freshlyPaid = d.bookings!.filter(
+              (b) => b.paymentStatus === "paid" && !prevConfirmed.has(b.bookingId),
+            );
+            if (freshlyPaid.length > 0) {
+              setNewPayments(freshlyPaid);
+              setPrevConfirmed((s) => {
+                const next = new Set(s);
+                freshlyPaid.forEach((b) => next.add(b.bookingId));
+                return next;
+              });
+            }
+            return d.bookings!;
+          });
+        })
+        .catch(() => {});
+    };
+    refresh(); // immediate on mount
+    const id = setInterval(refresh, 15_000);
+    return () => clearInterval(id);
   }, []);
+
+  // Seed initial prevConfirmed from already-paid bookings (don't re-notify on reload)
+  useEffect(() => {
+    setPrevConfirmed(new Set(initial.filter((b) => b.paymentStatus === "paid").map((b) => b.bookingId)));
+  }, []);
+
+  // Show toast when new payments detected
+  useEffect(() => {
+    newPayments.forEach((b) => {
+      toast.success(`Payment received for ${b.spaceName} from ${b.memberName}`, {
+        description: `₹${(b.totalAmount * 83).toLocaleString("en-IN")} via Razorpay`,
+        duration: 8000,
+      });
+    });
+    if (newPayments.length > 0) setNewPayments([]);
+  }, [newPayments]);
 
   const pending = bookings.filter((b) => b.status === "pending");
   const awaitingPayment = bookings.filter((b) => b.status === "awaiting_payment");
   const confirmed = bookings.filter((b) => b.status === "confirmed");
-  const [completingId, setCompletingId] = useState<string | null>(null);
-
-  const handleComplete = async (bookingId: string) => {
-    setCompletingId(bookingId);
-    try {
-      const res = await fetch(`/api/bookings/${bookingId}/complete`, { method: "PATCH" });
-      const data = (await res.json().catch(() => ({}))) as { booking?: BookingDTO; error?: string };
-      if (!res.ok || data.error) throw new Error(data.error ?? "Failed to update booking");
-      if (data.booking) refreshBooking(data.booking);
-      toast.success("Booking marked as completed.");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update booking");
-    } finally {
-      setCompletingId(null);
-    }
-  };
+  const paidCount = bookings.filter((b) => b.paymentStatus === "paid").length;
 
   const refreshBooking = (updated: BookingDTO) => {
     setBookings((prev) => prev.map((b) => (b.bookingId === updated.bookingId ? updated : b)));
     setAcceptingId(null);
-    setPaymentInstructions("");
-    setPaymentReference("");
     setOwnerNotes("");
   };
 
   const handleAccept = async (bookingId: string) => {
-    if (!gatewayEnabled && !paymentInstructions.trim()) {
-      toast.error("Please add payment instructions for the member.");
-      return;
-    }
     setProcessing(true);
     try {
-      const response = await fetch(`/api/bookings/${bookingId}/accept`, {
+      const res = await fetch(`/api/bookings/${bookingId}/accept`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentMethod: gatewayEnabled ? undefined : paymentMethod,
-          paymentInstructions: gatewayEnabled ? undefined : paymentInstructions,
-          paymentReference: gatewayEnabled ? undefined : paymentReference || undefined,
-          ownerNotes: ownerNotes || undefined,
-        }),
+        body: JSON.stringify({ ownerNotes: ownerNotes || undefined }),
       });
-      const result = (await response.json()) as { booking?: BookingDTO; error?: string };
-      if (!response.ok || result.error) {
-        toast.error(result.error ?? "Failed to accept booking");
-        return;
-      }
-      if (result.booking) refreshBooking(result.booking);
-      toast.success(
-        gatewayEnabled
-          ? "Booking approved — member notified with payment link."
-          : "Booking confirmed — member notified with payment details.",
-      );
+      const data = (await res.json()) as { booking?: BookingDTO; error?: string };
+      if (!res.ok || data.error) { toast.error(data.error ?? "Failed to accept"); return; }
+      if (data.booking) refreshBooking(data.booking);
+      toast.success("Booking accepted — member notified to pay via Razorpay.");
     } catch {
       toast.error("Failed to accept booking");
     } finally {
@@ -156,58 +133,36 @@ function OwnerPage() {
   const handleReject = async (bookingId: string) => {
     setProcessing(true);
     try {
-      const response = await fetch(`/api/bookings/${bookingId}/reject`, {
+      const res = await fetch(`/api/bookings/${bookingId}/reject`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ownerNotes: ownerNotes || "Booking unavailable for selected date." }),
       });
-      const result = (await response.json()) as { booking?: BookingDTO; error?: string };
-      if (!response.ok || result.error) {
-        toast.error(result.error ?? "Failed to reject booking");
-        return;
-      }
-      if (result.booking) refreshBooking(result.booking);
-      toast.success("Booking request declined.");
+      const data = (await res.json()) as { booking?: BookingDTO; error?: string };
+      if (!res.ok || data.error) { toast.error(data.error ?? "Failed to reject"); return; }
+      if (data.booking) refreshBooking(data.booking);
+      toast.success("Booking declined.");
       setAcceptingId(null);
       setOwnerNotes("");
     } catch {
-      toast.error("Failed to reject booking");
+      toast.error("Failed to decline booking");
     } finally {
       setProcessing(false);
     }
   };
 
-  const handleEditPayment = (space: Space) => {
-    setSpacePaymentEditing(space.id);
-    setSpacePaymentMethod(space.paymentMethod ?? "global");
-    setSpacePaymentInstructions(space.manualPaymentInstructions ?? "");
-  };
-
-  const handleSavePayment = async (spaceId: string) => {
+  const handleComplete = async (bookingId: string) => {
+    setCompletingId(bookingId);
     try {
-      const res = await fetch(`/api/spaces/${spaceId}/payment`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentMethod: spacePaymentMethod,
-          manualPaymentInstructions: spacePaymentInstructions,
-        }),
-      });
-      const data = (await res.json()) as { success?: boolean; error?: string };
-      if (!res.ok || data.error) throw new Error(data.error ?? "Failed to update");
-      
-      // Update local state
-      setMySpaces((prev) =>
-        prev.map((s) =>
-          s.id === spaceId
-            ? { ...s, paymentMethod: spacePaymentMethod, manualPaymentInstructions: spacePaymentInstructions }
-            : s,
-        ),
-      );
-      setSpacePaymentEditing(null);
-      toast.success("Payment settings updated.");
+      const res = await fetch(`/api/bookings/${bookingId}/complete`, { method: "PATCH" });
+      const data = (await res.json()) as { booking?: BookingDTO; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? "Failed");
+      if (data.booking) refreshBooking(data.booking);
+      toast.success("Booking marked as completed.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update");
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setCompletingId(null);
     }
   };
 
@@ -216,53 +171,55 @@ function OwnerPage() {
       <Navbar />
 
       <section className="border-b border-border bg-secondary/30 pt-16">
-        <div className="mx-auto max-w-7xl px-4 py-12 md:px-8">
+        <div className="mx-auto max-w-6xl px-4 py-10 md:px-8">
           <p className="eyebrow">Owner Portal</p>
-          <h1 className="mt-3 font-display text-4xl font-bold md:text-5xl">Manage your spaces</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Signed in as {user?.name}</p>
+          <h1 className="mt-2 font-display text-4xl font-bold">Manage your spaces</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Signed in as {user?.name}</p>
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-12 md:px-8 space-y-12">
-        <div className="grid gap-5 sm:grid-cols-3">
+      <section className="mx-auto max-w-6xl px-4 py-10 md:px-8 space-y-10">
+
+        {/* Stats */}
+        <div className="grid gap-4 sm:grid-cols-4">
           {[
-            { icon: Building2, label: "Listed spaces", value: mySpaces.length },
+            { icon: Building2, label: "Your spaces", value: ownerSpaces.length },
             { icon: CalendarClock, label: "Pending requests", value: pending.length },
-            { icon: Star, label: "Confirmed bookings", value: confirmed.length },
+            { icon: CreditCard, label: "Awaiting payment", value: awaitingPayment.length },
+            { icon: CheckCircle2, label: "Payments received", value: paidCount },
           ].map((s) => (
-            <div key={s.label} className="rounded-lg border border-border bg-card p-6 shadow-soft">
-              <span className="flex h-10 w-10 items-center justify-center rounded-md bg-accent/10 text-accent">
-                <s.icon className="h-5 w-5" />
-              </span>
-              <p className="mt-4 font-display text-3xl font-bold">{s.value}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{s.label}</p>
+            <div key={s.label} className="rounded-lg border border-border bg-card p-5 shadow-soft">
+              <s.icon className="h-5 w-5 text-accent" />
+              <p className="mt-3 font-display text-3xl font-bold">{s.value}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">{s.label}</p>
             </div>
           ))}
         </div>
 
-        {/* Pending booking requests */}
+        {/* ① PENDING REQUESTS */}
         <div>
           <h2 className="font-display text-2xl font-bold">Booking requests</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Review member requests, then accept{gatewayEnabled ? " to send a payment link" : " with payment details"} or decline.
+            Accept to notify the member to pay via Razorpay Net Banking, or decline.
           </p>
 
           {pending.length === 0 ? (
-            <div className="mt-5 rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-              No pending booking requests.
+            <div className="mt-4 rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+              No pending requests.
             </div>
           ) : (
-            <div className="mt-5 space-y-4">
+            <div className="mt-4 space-y-4">
               {pending.map((b) => (
-                <div key={b.bookingId} className="rounded-lg border border-border bg-card p-5 shadow-soft">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                <div key={b.bookingId} className="rounded-lg border border-border bg-card shadow-soft">
+                  <div className="flex flex-wrap items-start justify-between gap-3 p-5">
                     <div>
                       <h3 className="font-display text-lg font-bold">{b.spaceName}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">
-                        {b.memberName} ({b.memberEmail}) · {formatBookingDate(b.date)} · {formatBookingTimeRange(
-                          b.startTime,
-                          b.endTime,
-                        )} · {b.seats} seat{b.seats > 1 ? "s" : ""} · ${b.totalAmount}
+                        {b.memberName} ({b.memberEmail}) · {formatBookingDate(b.date)} ·{" "}
+                        {formatBookingTimeRange(b.startTime, b.endTime)} · {b.seats} seat{b.seats > 1 ? "s" : ""} ·{" "}
+                        <span className="font-medium text-foreground">
+                          ${b.totalAmount} (₹{(b.totalAmount * 83).toLocaleString("en-IN")})
+                        </span>
                       </p>
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-semibold ${bookingStatusStyles.pending}`}>
@@ -271,89 +228,40 @@ function OwnerPage() {
                   </div>
 
                   {acceptingId === b.bookingId ? (
-                    <div className="mt-4 space-y-3 border-t border-border pt-4">
-                      {gatewayEnabled ? (
-                        <p className="text-sm text-muted-foreground">
-                          Approving will email the member a secure payment link via{" "}
-                          {paymentProvider === "razorpay" ? "Razorpay" : "Stripe"}.
-                        </p>
-                      ) : (
-                        <>
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div>
-                              <Label htmlFor={`method-${b.bookingId}`}>Payment method</Label>
-                              <Input
-                                id={`method-${b.bookingId}`}
-                                value={paymentMethod}
-                                onChange={(e) => setPaymentMethod(e.target.value)}
-                                placeholder="e.g. UPI, Bank transfer"
-                              />
-                            </div>
-                            <div>
-                              <Label htmlFor={`ref-${b.bookingId}`}>Payment reference (optional)</Label>
-                              <Input
-                                id={`ref-${b.bookingId}`}
-                                value={paymentReference}
-                                onChange={(e) => setPaymentReference(e.target.value)}
-                                placeholder="UPI ID / account number"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <Label htmlFor={`instr-${b.bookingId}`}>Payment instructions</Label>
-                            <Textarea
-                              id={`instr-${b.bookingId}`}
-                              value={paymentInstructions}
-                              onChange={(e) => setPaymentInstructions(e.target.value)}
-                              placeholder="Tell the member how and when to pay…"
-                              rows={3}
-                            />
-                          </div>
-                        </>
-                      )}
+                    <div className="border-t border-border p-5 space-y-3">
+                      <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-700 dark:text-blue-300">
+                        <strong>Accepting</strong> will notify {b.memberName} to pay{" "}
+                        ₹{(b.totalAmount * 83).toLocaleString("en-IN")} via Razorpay Net Banking.
+                        Payment goes directly to your account.
+                      </div>
                       <div>
-                        <Label htmlFor={`notes-${b.bookingId}`}>Notes (optional)</Label>
+                        <Label htmlFor={`notes-${b.bookingId}`}>Note to member (optional)</Label>
                         <Input
                           id={`notes-${b.bookingId}`}
                           value={ownerNotes}
                           onChange={(e) => setOwnerNotes(e.target.value)}
-                          placeholder="Access instructions, check-in time, etc."
+                          placeholder="Access code, check-in time, etc."
+                          className="mt-1"
                         />
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="accent"
-                          disabled={processing}
-                          onClick={() => handleAccept(b.bookingId)}
-                        >
-                          <Check className="mr-1.5 h-4 w-4" />{" "}
-                          {gatewayEnabled ? "Approve & send payment link" : "Confirm & send payment details"}
+                        <Button size="sm" variant="accent" disabled={processing} onClick={() => handleAccept(b.bookingId)}>
+                          <Check className="mr-1.5 h-4 w-4" /> Accept & send payment request
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={processing}
-                          onClick={() => handleReject(b.bookingId)}
-                        >
+                        <Button size="sm" variant="outline" disabled={processing} onClick={() => handleReject(b.bookingId)}>
                           <X className="mr-1.5 h-4 w-4" /> Decline
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => setAcceptingId(null)}>
+                        <Button size="sm" variant="ghost" onClick={() => { setAcceptingId(null); setOwnerNotes(""); }}>
                           Cancel
                         </Button>
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-4 flex gap-2">
+                    <div className="border-t border-border px-5 py-3 flex gap-2">
                       <Button size="sm" variant="accent" onClick={() => setAcceptingId(b.bookingId)}>
-                        Review & accept
+                        Review &amp; accept
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={processing}
-                        onClick={() => handleReject(b.bookingId)}
-                      >
+                      <Button size="sm" variant="outline" disabled={processing} onClick={() => handleReject(b.bookingId)}>
                         Decline
                       </Button>
                     </div>
@@ -364,23 +272,21 @@ function OwnerPage() {
           )}
         </div>
 
-        {/* Awaiting payment */}
+        {/* ② AWAITING PAYMENT */}
         {awaitingPayment.length > 0 && (
           <div>
             <h2 className="font-display text-2xl font-bold">Awaiting payment</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Approved and waiting on the member to complete checkout.
+              Accepted — waiting for members to complete Razorpay checkout.
             </p>
-            <div className="mt-5 space-y-3">
+            <div className="mt-4 space-y-3">
               {awaitingPayment.map((b) => (
-                <div
-                  key={b.bookingId}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 shadow-soft"
-                >
+                <div key={b.bookingId} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 shadow-soft">
                   <div>
-                    <h3 className="font-display text-base font-bold">{b.spaceName}</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {b.memberName} · {formatBookingDate(b.date)} · ${b.totalAmount}
+                    <p className="font-semibold">{b.spaceName}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {b.memberName} · {formatBookingDate(b.date)} ·{" "}
+                      <span className="font-medium text-foreground">₹{(b.totalAmount * 83).toLocaleString("en-IN")}</span>
                     </p>
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${bookingStatusStyles.awaiting_payment}`}>
@@ -392,21 +298,20 @@ function OwnerPage() {
           </div>
         )}
 
-        {/* Confirmed bookings */}
+        {/* ③ CONFIRMED / PAID BOOKINGS */}
         {confirmed.length > 0 && (
           <div>
             <h2 className="font-display text-2xl font-bold">Confirmed bookings</h2>
-            <div className="mt-5 overflow-hidden rounded-lg border border-border">
-              <table className="w-full text-sm">
+            <div className="mt-4 overflow-x-auto rounded-lg border border-border">
+              <table className="w-full min-w-[700px] text-sm">
                 <thead className="bg-secondary/50">
                   <tr>
                     <th className="px-4 py-3 text-left font-semibold">Space</th>
                     <th className="px-4 py-3 text-left font-semibold">Member</th>
                     <th className="px-4 py-3 text-left font-semibold">Date</th>
-                    <th className="px-4 py-3 text-left font-semibold">Time</th>
-                    <th className="px-4 py-3 text-left font-semibold">Amount</th>
+                    <th className="px-4 py-3 text-left font-semibold">Amount (INR)</th>
                     <th className="px-4 py-3 text-left font-semibold">Payment</th>
-                    <th className="px-4 py-3 text-left font-semibold">Actions</th>
+                    <th className="px-4 py-3 text-left font-semibold">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -415,9 +320,13 @@ function OwnerPage() {
                       <td className="px-4 py-3 font-medium">{b.spaceName}</td>
                       <td className="px-4 py-3 text-muted-foreground">{b.memberName}</td>
                       <td className="px-4 py-3 text-muted-foreground">{formatBookingDate(b.date)}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{formatBookingTimeRange(b.startTime, b.endTime)}</td>
-                      <td className="px-4 py-3">${b.totalAmount}</td>
-                      <td className="px-4 py-3 text-muted-foreground">{b.paymentMethod}</td>
+                      <td className="px-4 py-3">
+                        ₹{(b.totalAmount * 83).toLocaleString("en-IN")}
+                        {b.paymentStatus === "paid" && (
+                          <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Paid</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{b.paymentMethod ?? "Razorpay"}</td>
                       <td className="px-4 py-3">
                         <Button
                           size="sm"
@@ -436,116 +345,32 @@ function OwnerPage() {
           </div>
         )}
 
-        {/* Space list */}
+        {/* ④ YOUR SPACES */}
         <div>
-          <div className="flex items-center justify-between">
-            <h2 className="font-display text-2xl font-bold">Your listings</h2>
-            <Button size="sm" variant="accent">
-              <Plus className="mr-1.5 h-4 w-4" /> Add space
-            </Button>
-          </div>
-          <div className="mt-5 space-y-4">
-            {mySpaces.length === 0 && (
-              <div className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-                No spaces linked to your account yet.
-              </div>
-            )}
-            {mySpaces.map((space) => (
-              <div key={space.id} className="rounded-lg border border-border bg-card shadow-soft">
-                <div className="flex items-center gap-4 p-4">
-                  <img
-                    src={space.image}
-                    alt={space.name}
-                    className="h-20 w-24 flex-shrink-0 rounded-md object-cover"
-                  />
+          <h2 className="font-display text-2xl font-bold">Your spaces</h2>
+          {ownerSpaces.length === 0 ? (
+            <div className="mt-4 rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+              No spaces linked to your account yet.
+            </div>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {ownerSpaces.map((space) => (
+                <div key={space.id} className="flex items-center gap-4 rounded-lg border border-border bg-card p-4 shadow-soft">
+                  <img src={space.image} alt={space.name} className="h-16 w-20 flex-shrink-0 rounded-md object-cover" />
                   <div className="min-w-0 flex-1">
-                    <h3 className="font-display text-lg font-bold">{space.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {space.city} · {space.type} · ${space.price}/day
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Payment:{" "}
-                      <span className="font-medium text-foreground">
-                        {space.paymentMethod === "global"
-                          ? `Global (${paymentProvider})`
-                          : space.paymentMethod === "manual"
-                          ? "Manual"
-                          : space.paymentMethod === "stripe"
-                          ? "Stripe"
-                          : "Razorpay"}
-                      </span>
+                    <p className="font-display font-bold">{space.name}</p>
+                    <p className="text-sm text-muted-foreground">{space.city} · {space.type} · ${space.price}/day</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Payment: <span className="font-medium text-foreground">Razorpay Net Banking</span>
                     </p>
                   </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => handleEditPayment(space)}>
-                      Payment settings
-                    </Button>
-                    <Link to="/spaces/$id" params={{ id: space.id }}>
-                      <Button size="sm" variant="outline">View</Button>
-                    </Link>
-                  </div>
+                  <Link to="/spaces/$id" params={{ id: space.id }}>
+                    <Button size="sm" variant="outline">View</Button>
+                  </Link>
                 </div>
-
-                {spacePaymentEditing === space.id && (
-                  <div className="border-t border-border p-4 space-y-3">
-                    <p className="text-sm font-semibold">Payment method for this space</p>
-                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                      {(["global", "stripe", "razorpay", "manual"] as SpacePaymentMethod[]).map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setSpacePaymentMethod(m)}
-                          className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors text-left ${
-                            spacePaymentMethod === m
-                              ? "border-accent bg-accent/10 text-accent"
-                              : "border-border bg-background hover:bg-secondary/50"
-                          }`}
-                        >
-                          <span className="block font-semibold capitalize">
-                            {m === "global" ? `Global default` : m.charAt(0).toUpperCase() + m.slice(1)}
-                          </span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">
-                            {m === "global" && `Uses ${paymentProvider} from env`}
-                            {m === "stripe" && "Stripe checkout"}
-                            {m === "razorpay" && "Razorpay payment link"}
-                            {m === "manual" && "Custom instructions"}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-
-                    {spacePaymentMethod === "manual" && (
-                      <div>
-                        <Label htmlFor={`instr-space-${space.id}`}>
-                          Default payment instructions
-                        </Label>
-                        <Textarea
-                          id={`instr-space-${space.id}`}
-                          value={spacePaymentInstructions}
-                          onChange={(e) => setSpacePaymentInstructions(e.target.value)}
-                          placeholder="e.g. Transfer to UPI: owner@upi · Include booking ID in remarks"
-                          rows={3}
-                          className="mt-1"
-                        />
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          These instructions are sent to members automatically when you approve a booking.
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="accent" onClick={() => handleSavePayment(space.id)}>
-                        Save
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setSpacePaymentEditing(null)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 

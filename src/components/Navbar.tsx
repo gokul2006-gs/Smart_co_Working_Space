@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Building2, Coffee, Menu, X, LogOut, ShieldCheck, LayoutDashboard } from "lucide-react";
+import { Building2, Coffee, Menu, X, LogOut, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -42,13 +42,13 @@ export function Navbar() {
               {l.label}
             </Link>
           ))}
-          {isAuthenticated && (
+          {isAuthenticated && user?.role === "user" && (
             <Link
               to="/dashboard"
               className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               activeProps={{ className: "text-foreground" }}
             >
-              Dashboard
+              My Bookings
             </Link>
           )}
           {user?.role === "space_owner" && (
@@ -57,7 +57,7 @@ export function Navbar() {
               className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               activeProps={{ className: "text-foreground" }}
             >
-              My Spaces
+              Owner Portal
             </Link>
           )}
           {user?.role === "admin" && (
@@ -66,7 +66,7 @@ export function Navbar() {
               className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               activeProps={{ className: "text-foreground" }}
             >
-              Admin
+              Admin Panel
             </Link>
           )}
         </div>
@@ -115,13 +115,13 @@ export function Navbar() {
                 {l.label}
               </Link>
             ))}
-            {isAuthenticated && (
+            {isAuthenticated && user?.role === "user" && (
               <Link
                 to="/dashboard"
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
               >
-                <LayoutDashboard className="h-4 w-4" /> Dashboard
+                <Building2 className="h-4 w-4" /> My Bookings
               </Link>
             )}
             {user?.role === "space_owner" && (
@@ -130,7 +130,7 @@ export function Navbar() {
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
               >
-                <Building2 className="h-4 w-4" /> My Spaces
+                <Building2 className="h-4 w-4" /> Owner Portal
               </Link>
             )}
             {user?.role === "admin" && (
