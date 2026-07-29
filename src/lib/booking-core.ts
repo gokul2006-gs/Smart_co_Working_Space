@@ -323,9 +323,10 @@ export async function acceptBooking(
   booking.ownerNotes = data.ownerNotes;
 
   // Resolve payment method: space-level setting takes priority over global env var
+  // Default to razorpay if space has no explicit setting and global is set to razorpay
   const spaceDoc = await SpaceModel.findOne({ id: booking.spaceId }).lean();
   const { provider, gatewayEnabled } = resolveSpacePaymentProvider(
-    spaceDoc?.paymentMethod as SpacePaymentMethod | undefined,
+    (spaceDoc?.paymentMethod as SpacePaymentMethod | undefined) ?? "global",
   );
 
   if (gatewayEnabled) {

@@ -30,9 +30,12 @@ import { Route as ApiAuthRegisterRouteImport } from './routes/api.auth.register'
 import { Route as ApiAuthLogoutRouteImport } from './routes/api.auth.logout'
 import { Route as ApiAuthLoginRouteImport } from './routes/api.auth.login'
 import { Route as ApiAdminUsersRouteImport } from './routes/api.admin.users'
+import { Route as ApiSpacesIdPaymentRouteImport } from './routes/api.spaces.$id.payment'
+import { Route as ApiPaymentsRazorpayOrderRouteImport } from './routes/api.payments.razorpay.order'
 import { Route as ApiPaymentsConfirmBookingIdRouteImport } from './routes/api.payments.confirm.$bookingId'
 import { Route as ApiPaymentsCheckoutBookingIdRouteImport } from './routes/api.payments.checkout.$bookingId'
 import { Route as ApiBookingsIdRejectRouteImport } from './routes/api.bookings.$id.reject'
+import { Route as ApiBookingsIdPayRouteImport } from './routes/api.bookings.$id.pay'
 import { Route as ApiBookingsIdCompleteRouteImport } from './routes/api.bookings.$id.complete'
 import { Route as ApiBookingsIdCancelRouteImport } from './routes/api.bookings.$id.cancel'
 import { Route as ApiBookingsIdAcceptRouteImport } from './routes/api.bookings.$id.accept'
@@ -142,6 +145,17 @@ const ApiAdminUsersRoute = ApiAdminUsersRouteImport.update({
   path: '/api/admin/users',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSpacesIdPaymentRoute = ApiSpacesIdPaymentRouteImport.update({
+  id: '/api/spaces/$id/payment',
+  path: '/api/spaces/$id/payment',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPaymentsRazorpayOrderRoute =
+  ApiPaymentsRazorpayOrderRouteImport.update({
+    id: '/api/payments/razorpay/order',
+    path: '/api/payments/razorpay/order',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPaymentsConfirmBookingIdRoute =
   ApiPaymentsConfirmBookingIdRouteImport.update({
     id: '/api/payments/confirm/$bookingId',
@@ -157,6 +171,11 @@ const ApiPaymentsCheckoutBookingIdRoute =
 const ApiBookingsIdRejectRoute = ApiBookingsIdRejectRouteImport.update({
   id: '/$id/reject',
   path: '/$id/reject',
+  getParentRoute: () => ApiBookingsRoute,
+} as any)
+const ApiBookingsIdPayRoute = ApiBookingsIdPayRouteImport.update({
+  id: '/$id/pay',
+  path: '/$id/pay',
   getParentRoute: () => ApiBookingsRoute,
 } as any)
 const ApiBookingsIdCompleteRoute = ApiBookingsIdCompleteRouteImport.update({
@@ -200,9 +219,12 @@ export interface FileRoutesByFullPath {
   '/api/bookings/$id/accept': typeof ApiBookingsIdAcceptRoute
   '/api/bookings/$id/cancel': typeof ApiBookingsIdCancelRoute
   '/api/bookings/$id/complete': typeof ApiBookingsIdCompleteRoute
+  '/api/bookings/$id/pay': typeof ApiBookingsIdPayRoute
   '/api/bookings/$id/reject': typeof ApiBookingsIdRejectRoute
   '/api/payments/checkout/$bookingId': typeof ApiPaymentsCheckoutBookingIdRoute
   '/api/payments/confirm/$bookingId': typeof ApiPaymentsConfirmBookingIdRoute
+  '/api/payments/razorpay/order': typeof ApiPaymentsRazorpayOrderRoute
+  '/api/spaces/$id/payment': typeof ApiSpacesIdPaymentRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -229,9 +251,12 @@ export interface FileRoutesByTo {
   '/api/bookings/$id/accept': typeof ApiBookingsIdAcceptRoute
   '/api/bookings/$id/cancel': typeof ApiBookingsIdCancelRoute
   '/api/bookings/$id/complete': typeof ApiBookingsIdCompleteRoute
+  '/api/bookings/$id/pay': typeof ApiBookingsIdPayRoute
   '/api/bookings/$id/reject': typeof ApiBookingsIdRejectRoute
   '/api/payments/checkout/$bookingId': typeof ApiPaymentsCheckoutBookingIdRoute
   '/api/payments/confirm/$bookingId': typeof ApiPaymentsConfirmBookingIdRoute
+  '/api/payments/razorpay/order': typeof ApiPaymentsRazorpayOrderRoute
+  '/api/spaces/$id/payment': typeof ApiSpacesIdPaymentRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -259,9 +284,12 @@ export interface FileRoutesById {
   '/api/bookings/$id/accept': typeof ApiBookingsIdAcceptRoute
   '/api/bookings/$id/cancel': typeof ApiBookingsIdCancelRoute
   '/api/bookings/$id/complete': typeof ApiBookingsIdCompleteRoute
+  '/api/bookings/$id/pay': typeof ApiBookingsIdPayRoute
   '/api/bookings/$id/reject': typeof ApiBookingsIdRejectRoute
   '/api/payments/checkout/$bookingId': typeof ApiPaymentsCheckoutBookingIdRoute
   '/api/payments/confirm/$bookingId': typeof ApiPaymentsConfirmBookingIdRoute
+  '/api/payments/razorpay/order': typeof ApiPaymentsRazorpayOrderRoute
+  '/api/spaces/$id/payment': typeof ApiSpacesIdPaymentRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -290,9 +318,12 @@ export interface FileRouteTypes {
     | '/api/bookings/$id/accept'
     | '/api/bookings/$id/cancel'
     | '/api/bookings/$id/complete'
+    | '/api/bookings/$id/pay'
     | '/api/bookings/$id/reject'
     | '/api/payments/checkout/$bookingId'
     | '/api/payments/confirm/$bookingId'
+    | '/api/payments/razorpay/order'
+    | '/api/spaces/$id/payment'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -319,9 +350,12 @@ export interface FileRouteTypes {
     | '/api/bookings/$id/accept'
     | '/api/bookings/$id/cancel'
     | '/api/bookings/$id/complete'
+    | '/api/bookings/$id/pay'
     | '/api/bookings/$id/reject'
     | '/api/payments/checkout/$bookingId'
     | '/api/payments/confirm/$bookingId'
+    | '/api/payments/razorpay/order'
+    | '/api/spaces/$id/payment'
   id:
     | '__root__'
     | '/'
@@ -348,9 +382,12 @@ export interface FileRouteTypes {
     | '/api/bookings/$id/accept'
     | '/api/bookings/$id/cancel'
     | '/api/bookings/$id/complete'
+    | '/api/bookings/$id/pay'
     | '/api/bookings/$id/reject'
     | '/api/payments/checkout/$bookingId'
     | '/api/payments/confirm/$bookingId'
+    | '/api/payments/razorpay/order'
+    | '/api/spaces/$id/payment'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -377,6 +414,8 @@ export interface RootRouteChildren {
   ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
   ApiPaymentsCheckoutBookingIdRoute: typeof ApiPaymentsCheckoutBookingIdRoute
   ApiPaymentsConfirmBookingIdRoute: typeof ApiPaymentsConfirmBookingIdRoute
+  ApiPaymentsRazorpayOrderRoute: typeof ApiPaymentsRazorpayOrderRoute
+  ApiSpacesIdPaymentRoute: typeof ApiSpacesIdPaymentRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -528,6 +567,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminUsersRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/spaces/$id/payment': {
+      id: '/api/spaces/$id/payment'
+      path: '/api/spaces/$id/payment'
+      fullPath: '/api/spaces/$id/payment'
+      preLoaderRoute: typeof ApiSpacesIdPaymentRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/payments/razorpay/order': {
+      id: '/api/payments/razorpay/order'
+      path: '/api/payments/razorpay/order'
+      fullPath: '/api/payments/razorpay/order'
+      preLoaderRoute: typeof ApiPaymentsRazorpayOrderRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/payments/confirm/$bookingId': {
       id: '/api/payments/confirm/$bookingId'
       path: '/api/payments/confirm/$bookingId'
@@ -547,6 +600,13 @@ declare module '@tanstack/react-router' {
       path: '/$id/reject'
       fullPath: '/api/bookings/$id/reject'
       preLoaderRoute: typeof ApiBookingsIdRejectRouteImport
+      parentRoute: typeof ApiBookingsRoute
+    }
+    '/api/bookings/$id/pay': {
+      id: '/api/bookings/$id/pay'
+      path: '/$id/pay'
+      fullPath: '/api/bookings/$id/pay'
+      preLoaderRoute: typeof ApiBookingsIdPayRouteImport
       parentRoute: typeof ApiBookingsRoute
     }
     '/api/bookings/$id/complete': {
@@ -577,6 +637,7 @@ interface ApiBookingsRouteChildren {
   ApiBookingsIdAcceptRoute: typeof ApiBookingsIdAcceptRoute
   ApiBookingsIdCancelRoute: typeof ApiBookingsIdCancelRoute
   ApiBookingsIdCompleteRoute: typeof ApiBookingsIdCompleteRoute
+  ApiBookingsIdPayRoute: typeof ApiBookingsIdPayRoute
   ApiBookingsIdRejectRoute: typeof ApiBookingsIdRejectRoute
 }
 
@@ -584,6 +645,7 @@ const ApiBookingsRouteChildren: ApiBookingsRouteChildren = {
   ApiBookingsIdAcceptRoute: ApiBookingsIdAcceptRoute,
   ApiBookingsIdCancelRoute: ApiBookingsIdCancelRoute,
   ApiBookingsIdCompleteRoute: ApiBookingsIdCompleteRoute,
+  ApiBookingsIdPayRoute: ApiBookingsIdPayRoute,
   ApiBookingsIdRejectRoute: ApiBookingsIdRejectRoute,
 }
 
@@ -615,6 +677,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
   ApiPaymentsCheckoutBookingIdRoute: ApiPaymentsCheckoutBookingIdRoute,
   ApiPaymentsConfirmBookingIdRoute: ApiPaymentsConfirmBookingIdRoute,
+  ApiPaymentsRazorpayOrderRoute: ApiPaymentsRazorpayOrderRoute,
+  ApiSpacesIdPaymentRoute: ApiSpacesIdPaymentRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

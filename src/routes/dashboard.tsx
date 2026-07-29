@@ -47,10 +47,10 @@ export const Route = createFileRoute("/dashboard")({
 function DashboardPage() {
   const { user } = Route.useRouteContext();
   const loader = Route.useLoaderData() as any;
-  const initialBookings: BookingDTO[] = loader?.bookings ?? loader?.bookings ?? [];
-  const stats = loader?.stats ?? [];
+  const initialBookings: BookingDTO[] = loader?.bookings ?? [];
 
   const [bookings, setBookings] = useState<BookingDTO[]>(initialBookings);
+  const [loadingBookings, setLoadingBookings] = useState(initialBookings.length === 0);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -58,14 +58,18 @@ function DashboardPage() {
     return () => clearInterval(id);
   }, []);
 
+  // Always fetch fresh bookings from API on mount — ensures payment status is current
   useEffect(() => {
-    // lightweight refresh — keep server-side in sync if API available
+    setLoadingBookings(true);
     fetch("/api/bookings")
       .then((r) => r.json())
-      .then((data) => {
-        if (data.bookings) setBookings(data.bookings);
+      .then((data: { bookings?: BookingDTO[] }) => {
+        if (Array.isArray(data.bookings)) {
+          setBookings(data.bookings);
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoadingBookings(false));
   }, []);
 
   const [payingId, setPayingId] = useState<string | null>(null);
@@ -268,7 +272,22 @@ function DashboardPage() {
         <div className="mt-12 grid gap-10 lg:grid-cols-[1.6fr_1fr]">
           <div>
             <h2 className="font-display text-2xl font-bold">Your bookings</h2>
-            {bookings.length === 0 ? (
+            {loadingBookings ? (
+              <div className="mt-5 space-y-4">
+                {[1, 2].map((i) => (
+                  <div key={i} className="rounded-lg border border-border bg-card p-4 shadow-soft animate-pulse">
+                    <div className="flex gap-4">
+                      <div className="h-20 w-24 flex-shrink-0 rounded-md bg-muted" />
+                      <div className="flex-1 space-y-2 py-1">
+                        <div className="h-4 w-1/2 rounded bg-muted" />
+                        <div className="h-3 w-3/4 rounded bg-muted" />
+                        <div className="h-3 w-1/4 rounded bg-muted" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : bookings.length === 0 ? (
               <div className="mt-5 rounded-lg border border-dashed border-border py-16 text-center">
                 <p className="font-display text-lg font-bold">No bookings yet</p>
                 <p className="mt-2 text-sm text-muted-foreground">Browse spaces and send your first booking request.</p>
@@ -308,17 +327,17 @@ function DashboardPage() {
                         </div>
                       </div>
 
-                      {b.status === "awaiting_payment" && b.paymentProvider !== "manual" && (
+                      {b.status === "awaiting_payment" && (
                         <div className="mt-4 rounded-md border border-blue-500/20 bg-blue-500/5 p-4 text-sm">
                           <p className="flex items-center gap-1.5 font-semibold text-blue-700 dark:text-blue-400">
-                            <CreditCard className="h-4 w-4" /> Payment required — owner has accepted your booking
+                            <CreditCard className="h-4 w-4" /> Owner accepted — payment required
                           </p>
                           <p className="mt-2 text-muted-foreground">
-                            Complete your payment of{" "}
+                            Pay{" "}
                             <span className="font-semibold text-foreground">
-                              ₹{Math.round(b.totalAmount * 83)}
+                              ₹{(b.totalAmount * 83).toLocaleString("en-IN")}
                             </span>{" "}
-                            via Net Banking to confirm your reservation.
+                            to confirm your seat at {b.spaceName}.
                           </p>
                           <Button
                             variant="accent"
@@ -330,7 +349,7 @@ function DashboardPage() {
                             <CreditCard className="h-4 w-4" />
                             {payingId === b.bookingId
                               ? "Opening payment…"
-                              : `Pay ₹${Math.round(b.totalAmount * 83)} via Net Banking`}
+                              : `Pay ₹${(b.totalAmount * 83).toLocaleString("en-IN")} via Net Banking`}
                           </Button>
                           <p className="mt-2 text-xs text-muted-foreground">
                             Powered by Razorpay · Secure &amp; encrypted
