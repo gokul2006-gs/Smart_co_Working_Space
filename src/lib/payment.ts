@@ -14,7 +14,18 @@ function getRawEnv(key: string): string | undefined {
 }
 
 export function getPaymentProvider(): PaymentProvider {
-  const configured = (getRawEnv("VITE_PAYMENT_PROVIDER") ?? getRawEnv("PAYMENT_PROVIDER"))?.toLowerCase();
+  // Server-side: read directly from process.env first
+  const serverEnv = typeof process !== "undefined" ? process.env : undefined;
+  const fromProcess = serverEnv?.["PAYMENT_PROVIDER"]?.toLowerCase();
+
+  // Client-side: read from Vite's import.meta.env
+  let fromVite: string | undefined;
+  if (typeof import.meta !== "undefined" && typeof import.meta.env !== "undefined") {
+    const env = import.meta.env as Record<string, string | undefined>;
+    fromVite = env["VITE_PAYMENT_PROVIDER"]?.toLowerCase();
+  }
+
+  const configured = fromVite ?? fromProcess;
   if (configured === "stripe") return "stripe";
   if (configured === "razorpay") return "razorpay";
   if (configured === "demo" || configured === "manual") return "manual";

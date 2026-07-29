@@ -6,7 +6,12 @@ function getRawEnv(key: string): string | undefined {
 }
 
 export function getPaymentProvider(): PaymentProvider {
-  const configured = (getRawEnv("VITE_PAYMENT_PROVIDER") ?? getRawEnv("PAYMENT_PROVIDER"))?.toLowerCase();
+  // Client: prefer Vite env, fallback to process.env
+  const env = import.meta.env as Record<string, string | undefined>;
+  const configured = (
+    env["VITE_PAYMENT_PROVIDER"] ??
+    (typeof process !== "undefined" ? process.env["PAYMENT_PROVIDER"] : undefined)
+  )?.toLowerCase();
   if (configured === "stripe") return "stripe";
   if (configured === "razorpay") return "razorpay";
   if (configured === "demo" || configured === "manual") return "manual";
