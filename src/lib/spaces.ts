@@ -18,6 +18,8 @@ export function resolveSpaceImage(image: string): string {
   return imageMap[image] ?? image;
 }
 
+import type { SpacePaymentMethod } from "@/models/Space";
+
 export type SpaceType = "Hot Desk" | "Private Office" | "Meeting Room" | "Lounge";
 
 export interface Space {
@@ -37,6 +39,8 @@ export interface Space {
   description: string;
   host: string;
   ownerEmail?: string;
+  paymentMethod?: SpacePaymentMethod;
+  manualPaymentInstructions?: string;
 }
 
 export const spaces: Space[] = [

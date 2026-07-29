@@ -2,6 +2,8 @@ import mongoose, { Schema } from "mongoose";
 
 import type { SpaceType } from "@/lib/spaces";
 
+export type SpacePaymentMethod = "global" | "stripe" | "razorpay" | "manual";
+
 export interface SpaceDocument {
   id: string;
   name: string;
@@ -19,6 +21,10 @@ export interface SpaceDocument {
   description: string;
   host: string;
   ownerId?: string;
+  /** Payment method for this space. "global" means use the app-level PAYMENT_PROVIDER env var. */
+  paymentMethod?: SpacePaymentMethod;
+  /** Custom manual payment instructions shown to members (used when paymentMethod = "manual") */
+  manualPaymentInstructions?: string;
 }
 
 const spaceSchema = new Schema<SpaceDocument>(
@@ -43,6 +49,12 @@ const spaceSchema = new Schema<SpaceDocument>(
     description: { type: String, required: true },
     host: { type: String, required: true },
     ownerId: { type: String, index: true },
+    paymentMethod: {
+      type: String,
+      enum: ["global", "stripe", "razorpay", "manual"],
+      default: "global",
+    },
+    manualPaymentInstructions: { type: String },
   },
   { timestamps: true },
 );

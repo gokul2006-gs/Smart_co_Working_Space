@@ -23,6 +23,10 @@ function toSpace(doc: Record<string, unknown>): Space {
     description: String(doc.description),
     host: String(doc.host),
     ownerEmail: doc.ownerEmail ? String(doc.ownerEmail) : undefined,
+    paymentMethod: (doc.paymentMethod as Space["paymentMethod"]) ?? "global",
+    manualPaymentInstructions: doc.manualPaymentInstructions
+      ? String(doc.manualPaymentInstructions)
+      : undefined,
   };
 }
 

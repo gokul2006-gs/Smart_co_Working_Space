@@ -7,15 +7,33 @@ import {
   notifyOwnerNewBooking,
 } from "@/lib/email";
 import { createPaymentSession } from "@/lib/payment.server";
-import { isPaymentGatewayEnabled } from "@/lib/payment";
+import { isPaymentGatewayEnabled, getPaymentProvider, type PaymentProvider } from "@/lib/payment";
 import { spaces as fallbackSpaces, type Space, resolveSpaceImage } from "@/lib/spaces";
 import { BookingModel, toBookingDTO, type BookingDTO } from "@/models/Booking";
 import { SpaceModel } from "@/models/Space";
+import type { SpacePaymentMethod } from "@/models/Space";
 import { UserModel } from "@/models/User";
 import type { SessionPayload } from "@/lib/session";
 
 /** Bookings with no specific owner yet — visible to all space owners */
 export const UNASSIGNED_OWNER = "unassigned";
+
+/**
+ * Resolve the effective payment provider for a space.
+ * "global" defers to the app-level PAYMENT_PROVIDER env var.
+ */
+function resolveSpacePaymentProvider(spacePaymentMethod?: SpacePaymentMethod): {
+  provider: PaymentProvider;
+  gatewayEnabled: boolean;
+} {
+  const method = spacePaymentMethod ?? "global";
+  if (method === "global") {
+    const provider = getPaymentProvider();
+    return { provider, gatewayEnabled: provider === "stripe" || provider === "razorpay" };
+  }
+  if (method === "manual") return { provider: "manual", gatewayEnabled: false };
+  return { provider: method, gatewayEnabled: true };
+}
 
 export const createBookingSchema = z.object({
   spaceId: z.string().min(1),
@@ -36,7 +54,7 @@ function generateBookingId(): string {
   return `bk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-type SpaceForBooking = Space & { ownerId?: string };
+type SpaceForBooking = Space & { ownerId?: string; paymentMethod?: SpacePaymentMethod; manualPaymentInstructions?: string };
 
 async function findSpaceForBooking(spaceId: string): Promise<SpaceForBooking | null> {
   await connectDB();
@@ -66,6 +84,10 @@ async function findSpaceForBooking(spaceId: string): Promise<SpaceForBooking | n
       description: String(doc.description),
       host: String(doc.host),
       ownerId: doc.ownerId ? String(doc.ownerId) : undefined,
+      paymentMethod: (doc.paymentMethod as SpacePaymentMethod) ?? "global",
+      manualPaymentInstructions: doc.manualPaymentInstructions
+        ? String(doc.manualPaymentInstructions)
+        : undefined,
     };
   }
 
@@ -300,11 +322,15 @@ export async function acceptBooking(
 
   booking.ownerNotes = data.ownerNotes;
 
-  const gateway = isPaymentGatewayEnabled();
+  // Resolve payment method: space-level setting takes priority over global env var
+  const spaceDoc = await SpaceModel.findOne({ id: booking.spaceId }).lean();
+  const { provider, gatewayEnabled } = resolveSpacePaymentProvider(
+    spaceDoc?.paymentMethod as SpacePaymentMethod | undefined,
+  );
 
-  if (gateway) {
+  if (gatewayEnabled) {
     const dto = toBookingDTO(booking.toObject());
-    const session = await createPaymentSession(dto);
+    const session = await createPaymentSession(dto, provider);
 
     booking.status = "awaiting_payment";
     booking.paymentProvider = session.provider;
@@ -320,13 +346,17 @@ export async function acceptBooking(
     return { booking: saved };
   }
 
-  if (!data.paymentInstructions?.trim()) {
+  // Manual payment — use space's pre-configured instructions or owner-provided ones
+  const spaceInstructions = spaceDoc?.manualPaymentInstructions?.trim();
+  const instructions = data.paymentInstructions?.trim() || spaceInstructions;
+
+  if (!instructions) {
     return { error: "Payment instructions are required when no payment gateway is configured" };
   }
 
   booking.status = "confirmed";
   booking.paymentMethod = data.paymentMethod ?? "Manual";
-  booking.paymentInstructions = data.paymentInstructions;
+  booking.paymentInstructions = instructions;
   booking.paymentReference = data.paymentReference;
   booking.paymentProvider = "manual";
   booking.paymentStatus = "unpaid";

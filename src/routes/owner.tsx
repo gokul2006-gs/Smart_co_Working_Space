@@ -10,14 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchOwnerBookings } from "@/lib/bookings-data";
 import { getPaymentProvider, isPaymentGatewayEnabled } from "@/lib/payment";
+import { getSpaces } from "@/lib/spaces-data";
+import type { Space } from "@/lib/spaces";
 import {
   bookingStatusLabels,
   bookingStatusStyles,
   formatBookingDate,
   formatBookingTimeRange,
 } from "@/lib/booking-utils";
-import { spaces } from "@/lib/spaces";
 import type { BookingDTO } from "@/models/Booking";
+import type { SpacePaymentMethod } from "@/models/Space";
 
 export const Route = createFileRoute("/owner")({
   beforeLoad: ({ context }) => {
@@ -28,9 +30,18 @@ export const Route = createFileRoute("/owner")({
   },
   loader: async ({ context }) => {
     try {
-      const bookings = await fetchOwnerBookings();
+      const [bookings, allSpaces] = await Promise.all([
+        fetchOwnerBookings(),
+        getSpaces(),
+      ]);
+      // Filter to spaces owned by this user (or all if admin)
+      const ownerSpaces =
+        context.user?.role === "admin"
+          ? allSpaces
+          : allSpaces.filter((s) => s.ownerId === context.user?.userId);
       return {
         bookings,
+        ownerSpaces,
         gatewayEnabled: isPaymentGatewayEnabled(),
         paymentProvider: getPaymentProvider(),
       };
@@ -38,6 +49,7 @@ export const Route = createFileRoute("/owner")({
       console.error("Owner bookings load failed:", err);
       return {
         bookings: [],
+        ownerSpaces: [],
         gatewayEnabled: isPaymentGatewayEnabled(),
         paymentProvider: getPaymentProvider(),
       };
@@ -52,18 +64,21 @@ export const Route = createFileRoute("/owner")({
   component: OwnerPage,
 });
 
-const mySpaces = spaces.slice(0, 2);
-
 function OwnerPage() {
   const { user } = Route.useRouteContext();
-  const { bookings: initialBookings, gatewayEnabled, paymentProvider } = Route.useLoaderData();
+  const { bookings: initialBookings, ownerSpaces, gatewayEnabled, paymentProvider } = Route.useLoaderData();
   const [bookings, setBookings] = useState(initialBookings);
+  const [mySpaces, setMySpaces] = useState<Space[]>(ownerSpaces);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("Bank transfer");
   const [paymentInstructions, setPaymentInstructions] = useState("");
   const [paymentReference, setPaymentReference] = useState("");
   const [ownerNotes, setOwnerNotes] = useState("");
   const [processing, setProcessing] = useState(false);
+  // Per-space payment config state: spaceId → { method, instructions }
+  const [spacePaymentEditing, setSpacePaymentEditing] = useState<string | null>(null);
+  const [spacePaymentMethod, setSpacePaymentMethod] = useState<SpacePaymentMethod>("global");
+  const [spacePaymentInstructions, setSpacePaymentInstructions] = useState("");
 
   // Refresh bookings from API (handles legacy ownership fixes)
   useEffect(() => {
@@ -159,6 +174,40 @@ function OwnerPage() {
       toast.error("Failed to reject booking");
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const handleEditPayment = (space: Space) => {
+    setSpacePaymentEditing(space.id);
+    setSpacePaymentMethod(space.paymentMethod ?? "global");
+    setSpacePaymentInstructions(space.manualPaymentInstructions ?? "");
+  };
+
+  const handleSavePayment = async (spaceId: string) => {
+    try {
+      const res = await fetch(`/api/spaces/${spaceId}/payment`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentMethod: spacePaymentMethod,
+          manualPaymentInstructions: spacePaymentInstructions,
+        }),
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || data.error) throw new Error(data.error ?? "Failed to update");
+      
+      // Update local state
+      setMySpaces((prev) =>
+        prev.map((s) =>
+          s.id === spaceId
+            ? { ...s, paymentMethod: spacePaymentMethod, manualPaymentInstructions: spacePaymentInstructions }
+            : s,
+        ),
+      );
+      setSpacePaymentEditing(null);
+      toast.success("Payment settings updated.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
     }
   };
 
@@ -396,25 +445,104 @@ function OwnerPage() {
             </Button>
           </div>
           <div className="mt-5 space-y-4">
+            {mySpaces.length === 0 && (
+              <div className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+                No spaces linked to your account yet.
+              </div>
+            )}
             {mySpaces.map((space) => (
-              <div
-                key={space.id}
-                className="flex items-center gap-4 rounded-lg border border-border bg-card p-4 shadow-soft"
-              >
-                <img
-                  src={space.image}
-                  alt={space.name}
-                  className="h-20 w-24 flex-shrink-0 rounded-md object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-display text-lg font-bold">{space.name}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {space.city} · {space.type} · ${space.price}/day
-                  </p>
+              <div key={space.id} className="rounded-lg border border-border bg-card shadow-soft">
+                <div className="flex items-center gap-4 p-4">
+                  <img
+                    src={space.image}
+                    alt={space.name}
+                    className="h-20 w-24 flex-shrink-0 rounded-md object-cover"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-display text-lg font-bold">{space.name}</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {space.city} · {space.type} · ${space.price}/day
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Payment:{" "}
+                      <span className="font-medium text-foreground">
+                        {space.paymentMethod === "global"
+                          ? `Global (${paymentProvider})`
+                          : space.paymentMethod === "manual"
+                          ? "Manual"
+                          : space.paymentMethod === "stripe"
+                          ? "Stripe"
+                          : "Razorpay"}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleEditPayment(space)}>
+                      Payment settings
+                    </Button>
+                    <Link to="/spaces/$id" params={{ id: space.id }}>
+                      <Button size="sm" variant="outline">View</Button>
+                    </Link>
+                  </div>
                 </div>
-                <Link to="/spaces/$id" params={{ id: space.id }}>
-                  <Button size="sm" variant="outline">View</Button>
-                </Link>
+
+                {spacePaymentEditing === space.id && (
+                  <div className="border-t border-border p-4 space-y-3">
+                    <p className="text-sm font-semibold">Payment method for this space</p>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      {(["global", "stripe", "razorpay", "manual"] as SpacePaymentMethod[]).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setSpacePaymentMethod(m)}
+                          className={`rounded-lg border px-4 py-3 text-sm font-medium transition-colors text-left ${
+                            spacePaymentMethod === m
+                              ? "border-accent bg-accent/10 text-accent"
+                              : "border-border bg-background hover:bg-secondary/50"
+                          }`}
+                        >
+                          <span className="block font-semibold capitalize">
+                            {m === "global" ? `Global default` : m.charAt(0).toUpperCase() + m.slice(1)}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {m === "global" && `Uses ${paymentProvider} from env`}
+                            {m === "stripe" && "Stripe checkout"}
+                            {m === "razorpay" && "Razorpay payment link"}
+                            {m === "manual" && "Custom instructions"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {spacePaymentMethod === "manual" && (
+                      <div>
+                        <Label htmlFor={`instr-space-${space.id}`}>
+                          Default payment instructions
+                        </Label>
+                        <Textarea
+                          id={`instr-space-${space.id}`}
+                          value={spacePaymentInstructions}
+                          onChange={(e) => setSpacePaymentInstructions(e.target.value)}
+                          placeholder="e.g. Transfer to UPI: owner@upi · Include booking ID in remarks"
+                          rows={3}
+                          className="mt-1"
+                        />
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          These instructions are sent to members automatically when you approve a booking.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="accent" onClick={() => handleSavePayment(space.id)}>
+                        Save
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setSpacePaymentEditing(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

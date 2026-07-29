@@ -28,11 +28,14 @@ export interface PaymentSessionResult {
   sessionId: string;
 }
 
-export async function createPaymentSession(booking: BookingDTO): Promise<PaymentSessionResult> {
-  const provider = getPaymentProvider();
+export async function createPaymentSession(
+  booking: BookingDTO,
+  provider?: PaymentProvider,
+): Promise<PaymentSessionResult> {
+  const selectedProvider = provider ?? getPaymentProvider();
   const appUrl = getAppUrl();
 
-  if (provider === "stripe") {
+  if (selectedProvider === "stripe") {
     const stripe = await getStripe();
     const currency = (process.env.STRIPE_CURRENCY ?? "usd").toLowerCase();
     const session = await stripe.checkout.sessions.create({
@@ -60,7 +63,7 @@ export async function createPaymentSession(booking: BookingDTO): Promise<Payment
     return { provider: "stripe", paymentUrl: session.url, sessionId: session.id };
   }
 
-  if (provider === "razorpay") {
+  if (selectedProvider === "razorpay") {
     const razorpay = await getRazorpay();
     const currency = (process.env.RAZORPAY_CURRENCY ?? "INR").toUpperCase();
     const amount = razorpayAmount(booking.totalAmount);
@@ -82,7 +85,7 @@ export async function createPaymentSession(booking: BookingDTO): Promise<Payment
     return { provider: "razorpay", paymentUrl, sessionId: link.id };
   }
 
-  throw new Error(`Payment provider "${provider}" does not support session creation in manual/demo mode`);
+  throw new Error(`Payment provider "${selectedProvider}" does not support session creation in manual/demo mode`);
 }
 
 async function getBookingDeps() {
