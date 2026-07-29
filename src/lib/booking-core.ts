@@ -21,18 +21,25 @@ export const UNASSIGNED_OWNER = "unassigned";
 /**
  * Resolve the effective payment provider for a space.
  * "global" defers to the app-level PAYMENT_PROVIDER env var.
+ * Always defaults to "razorpay" if env var is missing or unrecognised.
  */
 function resolveSpacePaymentProvider(spacePaymentMethod?: SpacePaymentMethod): {
   provider: PaymentProvider;
   gatewayEnabled: boolean;
 } {
   const method = spacePaymentMethod ?? "global";
-  if (method === "global") {
-    const provider = getPaymentProvider();
-    return { provider, gatewayEnabled: provider === "stripe" || provider === "razorpay" };
-  }
   if (method === "manual") return { provider: "manual", gatewayEnabled: false };
-  return { provider: method, gatewayEnabled: true };
+  if (method === "stripe") return { provider: "stripe", gatewayEnabled: true };
+  if (method === "razorpay") return { provider: "razorpay", gatewayEnabled: true };
+
+  // "global" — read directly from process.env (server-safe, no Vite layer)
+  const raw = (process.env["PAYMENT_PROVIDER"] ?? "razorpay").toLowerCase();
+  if (raw === "stripe") return { provider: "stripe", gatewayEnabled: true };
+  if (raw === "razorpay") return { provider: "razorpay", gatewayEnabled: true };
+  if (raw === "manual") return { provider: "manual", gatewayEnabled: false };
+
+  // Fallback — default to razorpay so payment always works
+  return { provider: "razorpay", gatewayEnabled: true };
 }
 
 export const createBookingSchema = z.object({
