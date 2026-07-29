@@ -42,16 +42,18 @@ export const Route = createFileRoute("/api/payments/razorpay/order")({
 
           const currency = (process.env.RAZORPAY_CURRENCY ?? "INR").toUpperCase();
           const rate = Number(process.env.RAZORPAY_USD_INR_RATE ?? 83);
+          // Razorpay amount is in paise (INR smallest unit)
           const amountInPaise = Math.round(booking.totalAmount * rate * 100);
 
+          // Always create a fresh order (idempotent — old orders stay valid too)
           const order = await rzp.orders.create({
             amount: amountInPaise,
             currency,
-            receipt: bookingId,
+            receipt: bookingId.slice(0, 40), // max 40 chars
             notes: { bookingId },
           });
 
-          // Store orderId on the booking
+          // Persist the order id
           booking.paymentSessionId = order.id;
           booking.paymentProvider = "razorpay";
           await booking.save();
@@ -66,6 +68,7 @@ export const Route = createFileRoute("/api/payments/razorpay/order")({
             booking: {
               bookingId: dto.bookingId,
               spaceName: dto.spaceName,
+              spaceCity: dto.spaceCity,
               memberName: dto.memberName,
               memberEmail: dto.memberEmail,
               totalAmount: dto.totalAmount,

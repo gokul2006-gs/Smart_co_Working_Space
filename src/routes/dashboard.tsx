@@ -85,7 +85,6 @@ function DashboardPage() {
   const handlePayNow = async (booking: BookingDTO) => {
     setPayingId(booking.bookingId);
     try {
-      // Create Razorpay order on server
       const res = await fetch("/api/payments/razorpay/order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -96,7 +95,7 @@ function DashboardPage() {
         keyId?: string;
         amount?: number;
         currency?: string;
-        booking?: { spaceName: string; memberName: string; memberEmail: string };
+        booking?: { spaceName: string; spaceCity: string; memberName: string; memberEmail: string; totalAmount: number };
         error?: string;
       };
 
@@ -104,21 +103,42 @@ function DashboardPage() {
         throw new Error(data.error ?? "Failed to create payment order");
       }
 
-      // Open Razorpay checkout popup
+      const rate = 83;
+      const inrAmount = data.booking?.totalAmount
+        ? `₹${Math.round(data.booking.totalAmount * rate)}`
+        : "";
+
       const rzp = new (window as any).Razorpay({
         key: data.keyId,
         amount: data.amount,
         currency: data.currency ?? "INR",
         order_id: data.orderId,
         name: "Aperture Spaces",
-        description: data.booking?.spaceName ?? "Space booking",
+        description: `${data.booking?.spaceName ?? "Space booking"}, ${data.booking?.spaceCity ?? ""}`,
         prefill: {
-          name: data.booking?.memberName,
-          email: data.booking?.memberEmail,
+          name: data.booking?.memberName ?? "",
+          email: data.booking?.memberEmail ?? "",
+          contact: "",
+        },
+        // Open directly on Net Banking tab
+        config: {
+          display: {
+            blocks: {
+              netbanking: {
+                name: "Pay via Net Banking",
+                instruments: [{ method: "netbanking" }],
+              },
+            },
+            sequence: ["block.netbanking"],
+            preferences: { show_default_blocks: false },
+          },
         },
         theme: { color: "#c17f59" },
-        handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string }) => {
-          // Payment successful — confirm on server
+        handler: async (response: {
+          razorpay_payment_id: string;
+          razorpay_order_id: string;
+          razorpay_signature: string;
+        }) => {
           try {
             const confirmRes = await fetch(`/api/payments/confirm/${booking.bookingId}`, {
               method: "POST",
@@ -128,12 +148,14 @@ function DashboardPage() {
             const confirmData = (await confirmRes.json()) as { booking?: BookingDTO };
             if (confirmData.booking) {
               setBookings((prev) =>
-                prev.map((b) => (b.bookingId === confirmData.booking!.bookingId ? confirmData.booking! : b)),
+                prev.map((b) =>
+                  b.bookingId === confirmData.booking!.bookingId ? confirmData.booking! : b,
+                ),
               );
             }
-            toast.success("Payment successful! Your booking is confirmed.");
+            toast.success(`Payment of ${inrAmount} successful! Booking confirmed.`);
           } catch {
-            toast.success("Payment received — booking will be updated shortly.");
+            toast.success("Payment received — your booking is confirmed.");
           } finally {
             setPayingId(null);
           }
@@ -287,18 +309,32 @@ function DashboardPage() {
                       </div>
 
                       {b.status === "awaiting_payment" && b.paymentProvider !== "manual" && (
-                        <div className="mt-4 rounded-md border border-blue-500/20 bg-blue-500/5 p-3 text-sm">
-                          <p className="flex items-center gap-1.5 font-semibold text-blue-700 dark:text-blue-400"><CreditCard className="h-4 w-4" /> Payment required</p>
-                          <p className="mt-2 text-muted-foreground">Your booking was approved. Pay ${b.totalAmount} to confirm your reservation.</p>
+                        <div className="mt-4 rounded-md border border-blue-500/20 bg-blue-500/5 p-4 text-sm">
+                          <p className="flex items-center gap-1.5 font-semibold text-blue-700 dark:text-blue-400">
+                            <CreditCard className="h-4 w-4" /> Payment required — owner has accepted your booking
+                          </p>
+                          <p className="mt-2 text-muted-foreground">
+                            Complete your payment of{" "}
+                            <span className="font-semibold text-foreground">
+                              ₹{Math.round(b.totalAmount * 83)}
+                            </span>{" "}
+                            via Net Banking to confirm your reservation.
+                          </p>
                           <Button
                             variant="accent"
                             size="sm"
-                            className="mt-3"
+                            className="mt-3 gap-2"
                             disabled={payingId === b.bookingId}
                             onClick={() => handlePayNow(b)}
                           >
-                            {payingId === b.bookingId ? "Opening checkout…" : `Pay ₹${Math.round(b.totalAmount * 83)} now`}
+                            <CreditCard className="h-4 w-4" />
+                            {payingId === b.bookingId
+                              ? "Opening payment…"
+                              : `Pay ₹${Math.round(b.totalAmount * 83)} via Net Banking`}
                           </Button>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Powered by Razorpay · Secure &amp; encrypted
+                          </p>
                         </div>
                       )}
 

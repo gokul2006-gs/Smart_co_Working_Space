@@ -329,20 +329,18 @@ export async function acceptBooking(
   );
 
   if (gatewayEnabled) {
-    const dto = toBookingDTO(booking.toObject());
-    const session = await createPaymentSession(dto, provider);
-
+    // Don't create a payment link/session at accept time.
+    // The Razorpay order is created on-demand when the member clicks "Pay Now"
+    // so the inline checkout popup can be used instead of a redirect.
     booking.status = "awaiting_payment";
-    booking.paymentProvider = session.provider;
-    booking.paymentSessionId = session.sessionId;
-    booking.paymentUrl = session.paymentUrl;
+    booking.paymentProvider = provider;
     booking.paymentStatus = "unpaid";
-    booking.paymentMethod = session.provider === "stripe" ? "Stripe" : "Razorpay";
-    booking.paymentInstructions = `Pay securely via ${booking.paymentMethod}`;
+    booking.paymentMethod = provider === "stripe" ? "Stripe" : "Razorpay — Net Banking";
+    booking.paymentInstructions = `Pay securely via ${provider === "stripe" ? "Stripe" : "Razorpay"}`;
     await booking.save();
 
     const saved = toBookingDTO(booking.toObject());
-    notifyMemberBookingConfirmed(saved, { gateway: true, paymentUrl: session.paymentUrl });
+    notifyMemberBookingConfirmed(saved, { gateway: true });
     return { booking: saved };
   }
 
