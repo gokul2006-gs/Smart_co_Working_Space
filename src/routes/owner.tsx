@@ -50,9 +50,11 @@ function OwnerPortal() {
   const [ownerNotes, setOwnerNotes] = useState("");
   const [processing, setProcessing] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
-  // For new payment notifications
-  const [newPayments, setNewPayments] = useState<BookingDTO[]>([]);
-  const [prevConfirmed, setPrevConfirmed] = useState<Set<string>>(new Set());
+
+  // Seed prevConfirmed synchronously so first poll never fires false toasts
+  const [prevConfirmed, setPrevConfirmed] = useState<Set<string>>(
+    () => new Set(initial.filter((b) => b.paymentStatus === "paid").map((b) => b.bookingId)),
+  );
 
   // Poll for updates every 15s — owner sees payment confirmation in real time
   useEffect(() => {
@@ -61,44 +63,40 @@ function OwnerPortal() {
         .then((r) => r.json())
         .then((d: { bookings?: BookingDTO[] }) => {
           if (!Array.isArray(d.bookings)) return;
-          setBookings((prev) => {
-            // Detect newly paid bookings since last poll
+
+          // Detect bookings that just became paid since last poll
+          setPrevConfirmed((prev) => {
             const freshlyPaid = d.bookings!.filter(
-              (b) => b.paymentStatus === "paid" && !prevConfirmed.has(b.bookingId),
+              (b) => b.paymentStatus === "paid" && !prev.has(b.bookingId),
             );
             if (freshlyPaid.length > 0) {
-              setNewPayments(freshlyPaid);
-              setPrevConfirmed((s) => {
-                const next = new Set(s);
-                freshlyPaid.forEach((b) => next.add(b.bookingId));
-                return next;
+              // Show one toast per newly-paid booking
+              freshlyPaid.forEach((b) => {
+                toast.success(`Payment received — ${b.spaceName}`, {
+                  description: `${b.memberName} paid ₹${(b.totalAmount * 83).toLocaleString("en-IN")} via Razorpay`,
+                  duration: 8000,
+                });
               });
+              const next = new Set(prev);
+              freshlyPaid.forEach((b) => next.add(b.bookingId));
+              return next;
             }
-            return d.bookings!;
+            return prev;
           });
+
+          setBookings(d.bookings!);
         })
         .catch(() => {});
     };
-    refresh(); // immediate on mount
+
+    // First refresh after a short delay so SSR data is already rendered
+    const initialTimer = setTimeout(refresh, 3000);
     const id = setInterval(refresh, 15_000);
-    return () => clearInterval(id);
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(id);
+    };
   }, []);
-
-  // Seed initial prevConfirmed from already-paid bookings (don't re-notify on reload)
-  useEffect(() => {
-    setPrevConfirmed(new Set(initial.filter((b) => b.paymentStatus === "paid").map((b) => b.bookingId)));
-  }, []);
-
-  // Show toast when new payments detected
-  useEffect(() => {
-    newPayments.forEach((b) => {
-      toast.success(`Payment received for ${b.spaceName} from ${b.memberName}`, {
-        description: `₹${(b.totalAmount * 83).toLocaleString("en-IN")} via Razorpay`,
-        duration: 8000,
-      });
-    });
-    if (newPayments.length > 0) setNewPayments([]);
-  }, [newPayments]);
 
   const pending = bookings.filter((b) => b.status === "pending");
   const awaitingPayment = bookings.filter((b) => b.status === "awaiting_payment");

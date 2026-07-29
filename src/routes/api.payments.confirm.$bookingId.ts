@@ -75,14 +75,16 @@ export const Route = createFileRoute("/api/payments/confirm/$bookingId")({
               { updatePipeline: true },
             );
             const dto = toBookingDTO(updated.toObject());
-            // Notify owner + admins
+            // Notify owner + admins only when this endpoint actually confirmed the payment
+            // (i.e. no webhook fired yet). The atomic $ne:"paid" guard above ensures
+            // this block runs at most once — safe to notify here.
             const admins = await UserModel.find({ role: "admin" }).lean();
             const adminEmails = admins.map((a) => a.email);
             notifyPaymentReceived(dto, adminEmails);
             return Response.json({ booking: dto });
           }
 
-          // Another process already confirmed it
+          // updated is null → webhook already confirmed it, no need to re-notify
           const final = await BookingModel.findOne({ bookingId: params.bookingId });
           return Response.json({ booking: final ? toBookingDTO(final.toObject()) : null });
         } catch (err) {

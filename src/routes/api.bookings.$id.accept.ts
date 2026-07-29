@@ -21,7 +21,8 @@ export const Route = createFileRoute("/api/bookings/$id/accept")({
           return Response.json({ booking: result.booking });
         } catch (err) {
           console.error("Accept booking error:", err);
-          return Response.json({ error: "Invalid request" }, { status: 400 });
+          const msg = err instanceof Error ? err.message : "Invalid request";
+          return Response.json({ error: msg }, { status: 500 });
         }
       },
     },
