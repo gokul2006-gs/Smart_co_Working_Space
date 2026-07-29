@@ -18,6 +18,15 @@ export const Route = createFileRoute("/api/payments/confirm/$bookingId")({
         try {
           await connectDB();
 
+          // Accept optional paymentId from body (Razorpay inline checkout)
+          let bodyPaymentId: string | undefined;
+          try {
+            const body = await request.json();
+            bodyPaymentId = body?.paymentId as string | undefined;
+          } catch {
+            // no body is fine
+          }
+
           const booking = await BookingModel.findOne({ bookingId: params.bookingId });
           if (!booking) return Response.json({ error: "Booking not found" }, { status: 404 });
 
@@ -44,7 +53,7 @@ export const Route = createFileRoute("/api/payments/confirm/$bookingId")({
               $set: {
                 status: "confirmed",
                 paymentStatus: "paid",
-                paymentId: `redirect_${Date.now()}`,
+                paymentId: bodyPaymentId ?? `redirect_${Date.now()}`,
                 confirmedAt: new Date(),
               },
             },

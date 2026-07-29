@@ -72,79 +72,97 @@ function DashboardPage() {
   const [manualPayRef, setManualPayRef] = useState<Record<string, string>>({});
   const [submittingManualId, setSubmittingManualId] = useState<string | null>(null);
 
-  const handlePayNow = async (bookingId: string) => {
-    setPayingId(bookingId);
-    try {
-      const res = await fetch(`/api/payments/checkout/${bookingId}`, { method: "GET" });
-      const data = (await res.json().catch(() => ({}))) as { paymentUrl?: string; error?: string };
+  // Load Razorpay checkout script once
+  useEffect(() => {
+    if (document.getElementById("razorpay-script")) return;
+    const script = document.createElement("script");
+    script.id = "razorpay-script";
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
 
-      if (!res.ok || !data.paymentUrl) {
-        throw new Error(data.error ?? "Payment failed");
+  const handlePayNow = async (booking: BookingDTO) => {
+    setPayingId(booking.bookingId);
+    try {
+      // Create Razorpay order on server
+      const res = await fetch("/api/payments/razorpay/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: booking.bookingId }),
+      });
+      const data = (await res.json()) as {
+        orderId?: string;
+        keyId?: string;
+        amount?: number;
+        currency?: string;
+        booking?: { spaceName: string; memberName: string; memberEmail: string };
+        error?: string;
+      };
+
+      if (!res.ok || !data.orderId) {
+        throw new Error(data.error ?? "Failed to create payment order");
       }
 
-      toast.success("Redirecting to secure checkout…");
-      window.location.href = data.paymentUrl;
+      // Open Razorpay checkout popup
+      const rzp = new (window as any).Razorpay({
+        key: data.keyId,
+        amount: data.amount,
+        currency: data.currency ?? "INR",
+        order_id: data.orderId,
+        name: "Aperture Spaces",
+        description: data.booking?.spaceName ?? "Space booking",
+        prefill: {
+          name: data.booking?.memberName,
+          email: data.booking?.memberEmail,
+        },
+        theme: { color: "#c17f59" },
+        handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string }) => {
+          // Payment successful — confirm on server
+          try {
+            const confirmRes = await fetch(`/api/payments/confirm/${booking.bookingId}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ paymentId: response.razorpay_payment_id }),
+            });
+            const confirmData = (await confirmRes.json()) as { booking?: BookingDTO };
+            if (confirmData.booking) {
+              setBookings((prev) =>
+                prev.map((b) => (b.bookingId === confirmData.booking!.bookingId ? confirmData.booking! : b)),
+              );
+            }
+            toast.success("Payment successful! Your booking is confirmed.");
+          } catch {
+            toast.success("Payment received — booking will be updated shortly.");
+          } finally {
+            setPayingId(null);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            toast.info("Payment cancelled.");
+            setPayingId(null);
+          },
+        },
+      });
+
+      rzp.open();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to initiate payment");
-    } finally {
       setPayingId(null);
     }
   };
 
-  // Surface Stripe/Razorpay redirect outcome (?payment=success|cancelled) as a toast, then clean the URL.
+  // Surface payment cancellation from URL params (fallback for redirect-based flows)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get("payment");
-    const bookingId = params.get("booking");
-
-    // Clean the URL immediately regardless of outcome
     params.delete("payment");
     params.delete("booking");
     const query = params.toString();
     window.history.replaceState({}, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
-
-    if (!payment) return;
-
-    if (payment === "success" && bookingId) {
-      // Confirm server-side first (fallback if webhook hasn't fired yet)
-      fetch(`/api/payments/confirm/${bookingId}`, { method: "POST" })
-        .then((r) => r.json())
-        .then((data: { booking?: BookingDTO }) => {
-          if (data.booking) {
-            setBookings((prev) =>
-              prev.map((b) => (b.bookingId === data.booking!.bookingId ? data.booking! : b)),
-            );
-          }
-          toast.success("Payment received — your booking is confirmed!");
-        })
-        .catch(() => {
-          toast.success("Payment received — your booking is confirmed!");
-        });
-
-      // Poll /api/bookings a few times to catch any async webhook update
-      let attempts = 0;
-      const poll = setInterval(() => {
-        attempts++;
-        fetch("/api/bookings")
-          .then((r) => r.json())
-          .then((data: { bookings?: BookingDTO[] }) => {
-            if (data.bookings) setBookings(data.bookings);
-          })
-          .catch(() => {})
-          .finally(() => {
-            if (attempts >= 4) clearInterval(poll);
-          });
-      }, 1500);
-
-    } else if (payment === "cancelled") {
+    if (payment === "cancelled") {
       toast.info("Payment cancelled. You can try again from your dashboard.");
-      // Refresh to get latest state
-      fetch("/api/bookings")
-        .then((r) => r.json())
-        .then((data: { bookings?: BookingDTO[] }) => {
-          if (data.bookings) setBookings(data.bookings);
-        })
-        .catch(() => {});
     }
   }, []);
 
@@ -277,9 +295,9 @@ function DashboardPage() {
                             size="sm"
                             className="mt-3"
                             disabled={payingId === b.bookingId}
-                            onClick={() => handlePayNow(b.bookingId)}
+                            onClick={() => handlePayNow(b)}
                           >
-                            {payingId === b.bookingId ? "Redirecting…" : "Pay now"}
+                            {payingId === b.bookingId ? "Opening checkout…" : `Pay ₹${Math.round(b.totalAmount * 83)} now`}
                           </Button>
                         </div>
                       )}
