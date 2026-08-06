@@ -38,6 +38,7 @@ export interface Space {
   amenities: string[];
   description: string;
   host: string;
+  ownerId?: string;
   ownerEmail?: string;
   paymentMethod?: SpacePaymentMethod;
   manualPaymentInstructions?: string;

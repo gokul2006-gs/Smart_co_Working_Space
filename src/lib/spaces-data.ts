@@ -22,6 +22,7 @@ function toSpace(doc: Record<string, unknown>): Space {
     amenities: doc.amenities as string[],
     description: String(doc.description),
     host: String(doc.host),
+    ownerId: doc.ownerId ? String(doc.ownerId) : undefined,
     ownerEmail: doc.ownerEmail ? String(doc.ownerEmail) : undefined,
     paymentMethod: (doc.paymentMethod as Space["paymentMethod"]) ?? "global",
     manualPaymentInstructions: doc.manualPaymentInstructions
