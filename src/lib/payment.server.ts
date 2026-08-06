@@ -187,10 +187,26 @@ export async function verifyRazorpayWebhookSignature(
 
   const crypto = await import("node:crypto");
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  if (!secret) return false;
 
-  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
-  return expected === signature;
+  // If no webhook secret is configured, allow in non-production for local demos
+  if (!secret) {
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn("RAZORPAY_WEBHOOK_SECRET not set — accepting webhook in non-production for demo");
+      return true;
+    }
+    return false;
+  }
+
+  // Accept both common encodings (hex and base64) to avoid signature encoding mismatches
+  const hmacHex = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+  const hmacBase64 = crypto.createHmac("sha256", secret).update(rawBody).digest("base64");
+  const ok = signature === hmacHex || signature === hmacBase64;
+  if (!ok && process.env.NODE_ENV !== "production") {
+    // eslint-disable-next-line no-console
+    console.debug("Razorpay webhook signature mismatch", { signature, hmacHex, hmacBase64 });
+  }
+  return ok;
 }
 
 export async function handleRazorpayWebhook(

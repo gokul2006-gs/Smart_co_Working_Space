@@ -92,6 +92,32 @@ ADMIN_PASSWORD=Admin123!
 
 ---
 
+## 🧪 Local Razorpay test/demo
+
+If you're running the app locally and want to demo Razorpay in TEST mode, follow these steps:
+
+- Use Razorpay TEST keys (they start with `rzp_test_`) in your local `.env` for `RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`.
+- Expose your local server so Razorpay can POST webhooks. Recommended: `ngrok` (requires signup) or `localtunnel` (no signup).
+
+  ngrok example:
+  ```powershell
+  npx ngrok authtoken YOUR_AUTHTOKEN
+  npx ngrok http 3000
+  ```
+
+  localtunnel example:
+  ```powershell
+  npx localtunnel --port 3000
+  ```
+
+- In the Razorpay dashboard (switch to TEST mode) add a webhook URL pointing to:
+  `https://<your-tunnel-host>/api/webhooks/razorpay` and enable `payment.captured` and `payment_link.paid` events.
+- Copy the webhook secret from the dashboard and set `RAZORPAY_WEBHOOK_SECRET` in your local `.env`.
+- Restart the dev server: `npm run dev` and create a payment using Razorpay test card numbers (e.g. `4111 1111 1111 1111`, any future expiry, CVV `123`).
+
+If you prefer not to configure a public webhook, the app includes a safety fallback for local demos: when `RAZORPAY_WEBHOOK_SECRET` is not set and `NODE_ENV !== 'production'`, the server will accept webhook requests for demo purposes only. For production, always set `RAZORPAY_WEBHOOK_SECRET` and keep it secret.
+
+
 ## 🌱 Demo accounts (after seeding)
 
 | Role | Email | Password |
